@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from .auth import (
+    MIN_PASSWORD_LENGTH,
     create_access_token,
     ensure_default_admin,
     ensure_roles,
@@ -26,12 +27,16 @@ from .models import AuditLog, FormValue, Role, SubteamRole, User
 app = FastAPI(title="SCR Form Manager")
 watcher = LdxWatcher()
 
+# CORS configuration - use ALLOWED_ORIGINS env var in production
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:8080,http://localhost:5173")
+origins_list = [origin.strip() for origin in allowed_origins.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins_list,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
@@ -119,6 +124,24 @@ def _validate_roles(roles: List[str]) -> List[str]:
     return roles
 
 
+def _validate_password(password: str) -> None:
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Password must be at least {MIN_PASSWORD_LENGTH} characters"
+        )
+    if password.isdigit():
+        raise HTTPException(
+            status_code=400,
+            detail="Password cannot be all numbers"
+        )
+    if password.isalpha():
+        raise HTTPException(
+            status_code=400,
+            detail="Password must contain at least one number or special character"
+        )
+
+
 def _ensure_access(role: str, user: User) -> None:
     if user.is_admin:
         return
@@ -152,6 +175,7 @@ def list_users(_: User = Depends(require_admin)) -> List[UserView]:
 
 @app.post("/admin/users", response_model=UserView)
 def create_user(payload: UserCreate, _: User = Depends(require_admin)) -> UserView:
+    _validate_password(payload.password)
     roles = _validate_roles(payload.roles)
     if payload.is_admin and roles:
         raise HTTPException(status_code=400, detail="Admin cannot have subteam roles")
@@ -190,6 +214,7 @@ def delete_user(user_id: int, _: User = Depends(require_admin)) -> Dict[str, str
 def update_password(
     user_id: int, payload: PasswordUpdate, _: User = Depends(require_admin)
 ) -> Dict[str, str]:
+    _validate_password(payload.password)
     with Session(engine) as session:
         user = session.get(User, user_id)
         if not user:
@@ -339,10 +364,20 @@ def set_watch_dir(
     path = payload.get("path", "")
     if not path:
         raise HTTPException(status_code=400, detail="Path is required")
-    if not os.path.isdir(path):
+    # Resolve and validate path to prevent path traversal
+    try:
+        resolved = Path(path).resolve()
+    except (ValueError, OSError):
+        raise HTTPException(status_code=400, detail="Invalid path")
+    if not resolved.is_dir():
         raise HTTPException(status_code=400, detail="Directory does not exist")
-    set_watch_directory(path)
-    return {"status": "updated", "path": path}
+    # Prevent access to sensitive system directories
+    sensitive_paths = ["/etc", "/var", "/usr", "/bin", "/sbin", "/root", "/home"]
+    for sensitive in sensitive_paths:
+        if str(resolved).startswith(sensitive) and not str(resolved).startswith("/home"):
+            raise HTTPException(status_code=400, detail="Access to system directories is not allowed")
+    set_watch_directory(str(resolved))
+    return {"status": "updated", "path": str(resolved)}
 
 
 @app.get("/admin/ldx-files", response_model=List[LdxFileInfo])

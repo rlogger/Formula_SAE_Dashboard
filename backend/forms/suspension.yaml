@@ -5,8 +5,8 @@ fields:
     label: "Spring Rate"
     type: "number"
     required: true
-  - name: "damper setting"
-    label: "damper setting"
+  - name: "damper_setting"
+    label: "Damper Setting"
     type: "number"
     required: true
   - name: "notes"

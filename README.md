@@ -77,7 +77,14 @@ Frontend:
 ## Docker Deployment
 1. Make sure Docker is installed on the OpenMediaVault host.
 2. Create a directory for the project and place this repo there.
-3. Update `docker-compose.yml` with your own `JWT_SECRET` and admin credentials.
+3. Copy `.env.example` to `.env` and configure your secrets:
+   ```
+   cp .env.example .env
+   # Edit .env with your own values:
+   # - ADMIN_USERNAME / ADMIN_PASSWORD
+   # - JWT_SECRET (generate with: openssl rand -hex 32)
+   # - ALLOWED_ORIGINS (your frontend URL)
+   ```
 4. Optionally create a host folder for LDX files: `./ldx`.
 5. Run:
    ```

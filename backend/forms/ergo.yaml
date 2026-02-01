@@ -5,7 +5,7 @@ fields:
     label: "Seat Position"
     type: "text"
     required: true
-  - name: "brake line"
+  - name: "brake_line"
     label: "Brake Line"
     type: "text"
     required: true

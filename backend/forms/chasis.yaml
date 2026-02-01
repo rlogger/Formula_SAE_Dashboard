@@ -1,4 +1,4 @@
-form_name: "Chasis Form"
+form_name: "Chassis Form"
 role: "chasis"
 fields:
   - name: "frame_material"
