@@ -5,10 +5,11 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - ADMIN_USERNAME=admin
-      - ADMIN_PASSWORD=admin123
-      - JWT_SECRET=6165a17551fe53d3a5f5fcdf1ba365b1db025ed95573a38ad332a1a068e21b81
+      - ADMIN_USERNAME=${ADMIN_USERNAME:?Set ADMIN_USERNAME in .env}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env}
       - LDX_WATCH_DIR=/ldx
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:8080,http://localhost:5173}
     volumes:
       - ./backend/data:/app/data
       - ./ldx:/ldx
@@ -16,15 +17,17 @@ services:
     build:
       context: ./frontend
       args:
-        - VITE_API_URL=http://localhost:8000
+        - VITE_API_URL=${VITE_API_URL:-http://localhost:8000}
     ports:
       - "8080:80"
-  sqlite-viewer:
-    image: coleifer/sqlite-web:latest
-    ports:
-      - "8081:8080"
-    volumes:
-      - ./backend/data:/data
-    command: ["sqlite_web", "/data/app.db", "--host", "0.0.0.0", "--port", "8080"]
-    depends_on:
-      - backend
+  # SQLite viewer - ONLY enable for local development, never in production
+  # Uncomment below for debugging database issues locally
+  # sqlite-viewer:
+  #   image: coleifer/sqlite-web:latest
+  #   ports:
+  #     - "127.0.0.1:8081:8080"  # Bind to localhost only
+  #   volumes:
+  #     - ./backend/data:/data
+  #   command: ["sqlite_web", "/data/app.db", "--host", "0.0.0.0", "--port", "8080"]
+  #   depends_on:
+  #     - backend
