@@ -13,6 +13,7 @@ class FormField(BaseModel):
     type: str
     required: bool = False
     options: Optional[List[str]] = None
+    placeholder: Optional[str] = None
 
 
 class FormSchema(BaseModel):

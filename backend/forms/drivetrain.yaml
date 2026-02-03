@@ -5,6 +5,8 @@ fields:
     label: "Gear Ratio"
     type: "text"
     required: true
+    placeholder: "e.g., 3.5:1"
   - name: "notes"
     label: "Notes"
     type: "textarea"
+    placeholder: "Enter any additional notes..."

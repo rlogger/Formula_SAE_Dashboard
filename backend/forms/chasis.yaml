@@ -5,6 +5,8 @@ fields:
     label: "Frame Material"
     type: "text"
     required: true
+    placeholder: "e.g., 4130 Chromoly Steel"
   - name: "notes"
     label: "Notes"
     type: "textarea"
+    placeholder: "Enter any additional notes..."

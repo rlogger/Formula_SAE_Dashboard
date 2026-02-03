@@ -5,6 +5,8 @@ fields:
     label: "Driver Name"
     type: "text"
     required: true
+    placeholder: "e.g., John Doe"
   - name: "notes"
     label: "Notes"
     type: "textarea"
+    placeholder: "Enter any additional notes..."

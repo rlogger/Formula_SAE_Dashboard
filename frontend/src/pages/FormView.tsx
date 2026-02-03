@@ -52,6 +52,7 @@ export default function FormView({ schema, values, onSubmit, headerContent }: Pr
                 <textarea
                   rows={3}
                   value={fieldValue}
+                  placeholder={field.placeholder}
                   onChange={(event) => updateField(field.name, event.target.value)}
                 />
               </div>
@@ -82,6 +83,7 @@ export default function FormView({ schema, values, onSubmit, headerContent }: Pr
               <input
                 type={inputType}
                 value={fieldValue}
+                placeholder={field.placeholder}
                 onChange={(event) => updateField(field.name, event.target.value)}
               />
             </div>
