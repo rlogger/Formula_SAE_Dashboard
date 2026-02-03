@@ -5,6 +5,8 @@ fields:
     label: "Controller Firmware"
     type: "text"
     required: true
+    placeholder: "e.g., v2.1.4"
   - name: "notes"
     label: "Notes"
     type: "textarea"
+    placeholder: "Enter any additional notes..."

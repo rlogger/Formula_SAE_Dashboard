@@ -5,6 +5,8 @@ fields:
     label: "Wing Angle"
     type: "number"
     required: true
+    placeholder: "e.g., 15 degrees"
   - name: "notes"
     label: "Notes"
     type: "textarea"
+    placeholder: "Enter any additional notes..."

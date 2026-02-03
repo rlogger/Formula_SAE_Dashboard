@@ -5,6 +5,8 @@ fields:
     label: "Project Status"
     type: "text"
     required: true
+    placeholder: "e.g., On Track, Delayed"
   - name: "notes"
     label: "Notes"
     type: "textarea"
+    placeholder: "Enter any additional notes..."

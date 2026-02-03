@@ -403,5 +403,5 @@ def list_ldx_files(_: User = Depends(require_admin)) -> List[LdxFileInfo]:
 
 
 @app.get("/roles")
-def roles() -> List[str]:
+def roles(_: User = Depends(get_current_user)) -> List[str]:
     return list_roles()

@@ -5,10 +5,13 @@ fields:
     label: "Spring Rate"
     type: "number"
     required: true
+    placeholder: "e.g., 450 lbs/in"
   - name: "damper_setting"
     label: "Damper Setting"
     type: "number"
     required: true
+    placeholder: "e.g., 12 clicks"
   - name: "notes"
     label: "Notes"
     type: "textarea"
+    placeholder: "Enter any additional notes..."

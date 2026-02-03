@@ -5,10 +5,13 @@ fields:
     label: "Seat Position"
     type: "text"
     required: true
+    placeholder: "e.g., 15 mm forward"
   - name: "brake_line"
     label: "Brake Line"
     type: "text"
     required: true
+    placeholder: "e.g., DOT 4 fluid, 6mm diameter"
   - name: "notes"
     label: "Notes"
     type: "textarea"
+    placeholder: "Enter any additional notes..."
