@@ -3,17 +3,16 @@
 pkgs.mkShell {
   buildInputs = with pkgs; [
     # Python development (FastAPI backend)
-    python311
-    python311Packages.pip
-    python311Packages.virtualenv
-    python311Packages.ipython
-    python311Packages.black
-    python311Packages.isort
-    python311Packages.debugpy
+    python3
+    python3Packages.pip
+    python3Packages.virtualenv
+    python3Packages.ipython
+    python3Packages.black
+    python3Packages.isort
+    python3Packages.debugpy
 
     # Node.js (React frontend)
     nodejs_20
-    nodePackages.npm
 
     # Database
     sqlite
