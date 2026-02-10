@@ -17,6 +17,10 @@ export async function apiFetch<T>(
     headers,
   });
   if (!response.ok) {
+    if (response.status === 401) {
+      localStorage.removeItem("token");
+      window.location.reload();
+    }
     const message = await response.text();
     throw new Error(message || "Request failed");
   }
