@@ -8,6 +8,7 @@ from xml.etree import ElementTree
 from sqlmodel import Session, select
 
 from .database import engine
+from .forms import load_forms
 from .models import FormValue, LdxFile, Setting, User
 
 
@@ -138,11 +139,19 @@ def _to_human(s: str) -> str:
     return s.replace("_", " ").strip().title()
 
 
+def _build_form_name_to_role() -> Dict[str, str]:
+    """Build a mapping from form_name to subteam role name."""
+    mapping: Dict[str, str] = {}
+    for form in load_forms():
+        mapping[form.form_name] = form.role
+    return mapping
+
+
 def inject_values_into_ldx(path: Path, session: Session, detection_time: datetime) -> None:
     # For new files, get the most recent submission across all fields
     # Get all form values (we'll filter to latest per field)
     all_values = session.exec(select(FormValue)).all()
-    
+
     # Debug: print how many values we found
     print(f"Injecting values into {path.name}: found {len(all_values)} form values")
 
@@ -154,13 +163,16 @@ def inject_values_into_ldx(path: Path, session: Session, detection_time: datetim
         current = latest_values.get(key)
         if not current or value.updated_at > current.updated_at:
             latest_values[key] = value
-    
+
     print(f"Latest values to inject: {len(latest_values)} unique fields")
-    
+
     # If no form values exist, there's nothing to inject
     if not latest_values:
         print(f"No form values found to inject into {path.name}")
         return
+
+    # Build form_name -> role mapping for notes prefix
+    form_name_to_role = _build_form_name_to_role()
 
     tree = ElementTree.parse(path)
     root = tree.getroot()
@@ -193,21 +205,25 @@ def inject_values_into_ldx(path: Path, session: Session, detection_time: datetim
     for human_field, vals in by_human_field.items():
         # Conflict if multiple forms have this field OR if it exists in LDX
         has_conflict = len(vals) > 1 or human_field in existing_ids
-        
+
         for val in vals:
-            if has_conflict:
+            if val.field_name == "notes":
+                # Notes fields use subteam_name.notes format
+                role = form_name_to_role.get(val.form_name, val.form_name)
+                final_id = f"{role}.notes"
+            elif has_conflict:
                 # Use Form Name + Field Name
                 final_id = f"{_to_human(val.form_name)} {human_field}"
             else:
                 # Use Field Name
                 final_id = human_field
-            
+
             to_inject[final_id] = val.value
 
     # Update or Add entries
     # First, track what we've handled
     handled_ids = set()
-    
+
     # Update existing entries if they match our target IDs
     for child in details.findall("String"):
         id_attr = child.get("Id")
@@ -229,6 +245,6 @@ def inject_values_into_ldx(path: Path, session: Session, detection_time: datetim
     except AttributeError:
         # Fallback for older Python versions
         _indent_xml(root)
-    
+
     # Write with proper formatting
     tree.write(path, encoding="utf-8", xml_declaration=True)
