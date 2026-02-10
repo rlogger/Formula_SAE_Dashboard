@@ -15,6 +15,7 @@ class SubteamRole(str, Enum):
     chasis = "chasis"
     aero = "aero"
     ergo = "ergo"
+    powertrain = "powertrain"
 
 
 class UserRoleLink(SQLModel, table=True):

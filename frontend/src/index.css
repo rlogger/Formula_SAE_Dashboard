@@ -106,3 +106,54 @@ button.secondary {
   text-align: left;
   font-size: 13px;
 }
+
+/* Role header navigation (replaces dropdown for subteam members) */
+.role-header {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.role-header-btn {
+  background: #e2e8f0;
+  color: #1f2933;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.role-header-btn.active {
+  background: #2563eb;
+  color: #fff;
+  border-color: #1d4ed8;
+}
+
+/* Form tab bar */
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 2px solid #e5e7eb;
+  padding-bottom: 0;
+}
+
+.tab-btn {
+  background: transparent;
+  color: #64748b;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 8px 16px;
+  margin-bottom: -2px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.tab-btn.active {
+  color: #2563eb;
+  border-bottom-color: #2563eb;
+}

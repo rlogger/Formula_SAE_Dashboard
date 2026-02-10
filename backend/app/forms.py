@@ -14,6 +14,7 @@ class FormField(BaseModel):
     required: bool = False
     options: Optional[List[str]] = None
     placeholder: Optional[str] = None
+    tab: Optional[str] = None
 
 
 class FormSchema(BaseModel):

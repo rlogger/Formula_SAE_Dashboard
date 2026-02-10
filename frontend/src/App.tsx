@@ -98,8 +98,6 @@ export default function App() {
     return <Login onLogin={handleLogin} />;
   }
 
-  const availableRoles = forms.map((form) => form.role);
-  const showRoleSwitch = availableRoles.length > 1 && !user.is_admin;
   const adminFormSelector = user.is_admin ? (
     <div className="field">
       <label>Browse Forms</label>
@@ -131,19 +129,18 @@ export default function App() {
             </button>
           </div>
         </div>
-        {showRoleSwitch && (
-          <div className="field">
-            <label>Choose Role</label>
-            <select
-              value={activeRole || ""}
-              onChange={(event) => setActiveRole(event.target.value)}
-            >
-              {availableRoles.map((role) => (
-                <option key={role} value={role}>
-                  {role}
-                </option>
-              ))}
-            </select>
+        {!user.is_admin && forms.length > 1 && (
+          <div className="role-header">
+            {forms.map((form) => (
+              <button
+                key={form.role}
+                type="button"
+                className={`role-header-btn${activeRole === form.role ? " active" : ""}`}
+                onClick={() => setActiveRole(form.role)}
+              >
+                {form.form_name}
+              </button>
+            ))}
           </div>
         )}
       </div>

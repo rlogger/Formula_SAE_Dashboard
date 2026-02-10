@@ -76,11 +76,10 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
 
 
 def ensure_roles(session: Session) -> None:
-    existing = session.exec(select(Role)).all()
-    if existing:
-        return
+    existing = {r.name for r in session.exec(select(Role)).all()}
     for role in SubteamRole:
-        session.add(Role(name=role.value))
+        if role.value not in existing:
+            session.add(Role(name=role.value))
     session.commit()
 
 

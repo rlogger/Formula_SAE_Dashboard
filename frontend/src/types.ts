@@ -12,6 +12,7 @@ export type FormField = {
   required: boolean;
   options?: string[];
   placeholder?: string;
+  tab?: string;
 };
 
 export type FormSchema = {
