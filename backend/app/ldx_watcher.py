@@ -24,7 +24,9 @@ def _indent_xml(elem, level=0):
         for child in elem:
             _indent_xml(child, level + 1)
             last_child = child
-        if last_child is not None and (not last_child.tail or not last_child.tail.strip()):
+        if last_child is not None and (
+            not last_child.tail or not last_child.tail.strip()
+        ):
             last_child.tail = indent
     else:
         if level and (not elem.tail or not elem.tail.strip()):
@@ -54,6 +56,7 @@ class LdxWatcher:
                 # Log errors but keep the watcher alive
                 print(f"Error in LDX watcher scan: {e}")
                 import traceback
+
                 traceback.print_exc()
             await asyncio.sleep(self.interval_seconds)
 
@@ -73,26 +76,28 @@ class LdxWatcher:
         except OSError:
             # File might have been deleted
             return
-        
+
         # Use absolute path for consistent comparison
         abs_path = str(path.resolve())
-            
+
         try:
             with Session(engine) as session:
-                record = session.exec(select(LdxFile).where(LdxFile.path == abs_path)).first()
-                
+                record = session.exec(
+                    select(LdxFile).where(LdxFile.path == abs_path)
+                ).first()
+
                 # If file was already processed, skip it
                 if record:
                     return
-                
+
                 # This is a new file - record the detection time (current UTC time)
                 # This represents when we first detected the file in the directory
                 detection_time = datetime.utcnow()
-                
+
                 # Inject the most recent form values across all fields
                 # Each new file gets the latest submission for each field
                 inject_values_into_ldx(path, session, detection_time)
-                
+
                 # Record that we've processed this file
                 # Store the detection time and current mtime for reference
                 try:
@@ -100,7 +105,7 @@ class LdxWatcher:
                 except OSError:
                     # File might have been deleted during processing
                     return
-                    
+
                 session.add(
                     LdxFile(
                         path=abs_path,
@@ -113,6 +118,7 @@ class LdxWatcher:
             # Log the error but don't crash the watcher
             print(f"Error processing LDX file {path}: {e}")
             import traceback
+
             traceback.print_exc()
 
 
@@ -147,7 +153,9 @@ def _build_form_name_to_role() -> Dict[str, str]:
     return mapping
 
 
-def inject_values_into_ldx(path: Path, session: Session, detection_time: datetime) -> None:
+def inject_values_into_ldx(
+    path: Path, session: Session, detection_time: datetime
+) -> None:
     # For new files, get the most recent submission across all fields
     # Get all form values (we'll filter to latest per field)
     all_values = session.exec(select(FormValue)).all()
