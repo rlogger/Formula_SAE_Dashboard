@@ -109,7 +109,7 @@ pkgs.mkShell {
 
     # Project-specific aliases
     alias backend='cd backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000'
-    alias frontend='cd frontend && npm run dev'
+    alias frontend='cd frontend && npm run dev -- -p 3000'
     alias dc='docker compose'
     alias dcup='docker compose up --build -d'
     alias dcdown='docker compose down'
@@ -134,7 +134,7 @@ pkgs.mkShell {
     export LDX_WATCH_DIR="''${LDX_WATCH_DIR:-./ldx}"
 
     # Frontend environment
-    export VITE_API_URL="''${VITE_API_URL:-http://localhost:8000}"
+    export NEXT_PUBLIC_API_URL="''${NEXT_PUBLIC_API_URL:-http://localhost:8000}"
 
     # ----------------------------------------
     # Help Output

@@ -14,12 +14,16 @@ class FormField(BaseModel):
     required: bool = False
     options: Optional[List[str]] = None
     placeholder: Optional[str] = None
+    unit: Optional[str] = None
+    inject: Optional[str] = None
+    tab: Optional[str] = None
 
 
 class FormSchema(BaseModel):
     form_name: str
     role: str
     fields: List[FormField]
+    tabs: Optional[List[str]] = None
 
 
 FORMS_DIR = Path(os.getenv("FORMS_DIR", Path(__file__).resolve().parent.parent / "forms"))
