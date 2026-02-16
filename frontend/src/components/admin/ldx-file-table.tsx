@@ -15,9 +15,10 @@ import { FolderOpen } from "lucide-react";
 
 type Props = {
   files: LdxFileInfo[];
+  onFileClick?: (fileName: string) => void;
 };
 
-export function LdxFileTable({ files }: Props) {
+export function LdxFileTable({ files, onFileClick }: Props) {
   if (files.length === 0) {
     return (
       <EmptyState
@@ -39,7 +40,11 @@ export function LdxFileTable({ files }: Props) {
       </TableHeader>
       <TableBody>
         {files.map((file) => (
-          <TableRow key={file.name}>
+          <TableRow
+            key={file.name}
+            className={onFileClick ? "cursor-pointer hover:bg-accent" : ""}
+            onClick={() => onFileClick?.(file.name)}
+          >
             <TableCell className="font-medium">{file.name}</TableCell>
             <TableCell>{formatSize(file.size)}</TableCell>
             <TableCell>{formatLocalTime(file.modified_at)}</TableCell>

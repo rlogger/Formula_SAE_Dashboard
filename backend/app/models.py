@@ -69,3 +69,12 @@ class LdxFile(SQLModel, table=True):
     path: str = Field(index=True, unique=True)
     mtime: float
     processed_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class InjectionLog(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    ldx_path: str = Field(index=True)
+    field_id: str
+    value: str
+    was_update: bool = False
+    injected_at: datetime = Field(default_factory=datetime.utcnow)

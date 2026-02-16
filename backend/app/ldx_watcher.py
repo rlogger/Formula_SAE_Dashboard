@@ -8,8 +8,8 @@ from xml.etree import ElementTree
 from sqlmodel import Session, select
 
 from .database import engine
-from .forms import load_forms
-from .models import FormValue, LdxFile, Setting, User
+from .forms import FormField, load_forms
+from .models import FormValue, InjectionLog, LdxFile, Setting, User
 
 
 def _indent_xml(elem, level=0):
@@ -153,18 +153,28 @@ def _build_form_name_to_role() -> Dict[str, str]:
     return mapping
 
 
+def _build_field_lookup() -> Dict[str, FormField]:
+    """Build a mapping from 'form_name.field_name' -> FormField schema."""
+    lookup: Dict[str, FormField] = {}
+    for form in load_forms():
+        for field in form.fields:
+            lookup[f"{form.form_name}.{field.name}"] = field
+    return lookup
+
+
+# Field types that go into Maths/MathConstants as MathConstant elements.
+_MATH_TYPES = {"number"}
+
+
 def inject_values_into_ldx(
     path: Path, session: Session, detection_time: datetime
 ) -> None:
-    # For new files, get the most recent submission across all fields
     # Get all form values (we'll filter to latest per field)
     all_values = session.exec(select(FormValue)).all()
 
-    # Debug: print how many values we found
     print(f"Injecting values into {path.name}: found {len(all_values)} form values")
 
     # Get the latest value for each unique (form_name, field_name) pair
-    # This ensures each new file gets the most recent submission for each field
     latest_values: Dict[str, FormValue] = {}
     for value in all_values:
         key = f"{value.form_name}.{value.field_name}"
@@ -174,30 +184,45 @@ def inject_values_into_ldx(
 
     print(f"Latest values to inject: {len(latest_values)} unique fields")
 
-    # If no form values exist, there's nothing to inject
     if not latest_values:
         print(f"No form values found to inject into {path.name}")
         return
 
-    # Build form_name -> role mapping for notes prefix
+    # Build lookups
     form_name_to_role = _build_form_name_to_role()
+    field_lookup = _build_field_lookup()
 
     tree = ElementTree.parse(path)
     root = tree.getroot()
 
-    # Find or create Layers/Details
+    # ── Ensure both target sections exist ──
+
+    # Layers/Details for String entries
     layers = root.find("Layers")
     if layers is None:
         layers = ElementTree.SubElement(root, "Layers")
-
     details = layers.find("Details")
     if details is None:
         details = ElementTree.SubElement(layers, "Details")
 
-    # Collect existing IDs
-    existing_ids = set()
+    # Maths/MathConstants for MathConstant entries
+    maths = root.find("Maths")
+    if maths is None:
+        maths = ElementTree.SubElement(root, "Maths")
+        maths.set("Id", "Local")
+        maths.set("Flags", "1208")
+    math_constants = maths.find("MathConstants")
+    if math_constants is None:
+        math_constants = ElementTree.SubElement(maths, "MathConstants")
+
+    # Collect existing IDs in both sections
+    existing_string_ids = set()
     for child in details.findall("String"):
-        existing_ids.add(child.get("Id"))
+        existing_string_ids.add(child.get("Id"))
+
+    existing_math_names = set()
+    for child in math_constants.findall("MathConstant"):
+        existing_math_names.add(child.get("Name"))
 
     # Group values by their human-readable field name to detect collisions
     by_human_field: Dict[str, List[FormValue]] = {}
@@ -207,52 +232,118 @@ def inject_values_into_ldx(
             by_human_field[human_field] = []
         by_human_field[human_field].append(val)
 
-    # Determine final ID for each value
-    to_inject: Dict[str, str] = {}  # Id -> Value
+    # Split into string values and math values, each with their final ID/Name
+    # string_inject: {Id -> value}
+    # math_inject:   {Name -> (value, unit)}
+    string_inject: Dict[str, str] = {}
+    math_inject: Dict[str, tuple] = {}
 
     for human_field, vals in by_human_field.items():
-        # Conflict if multiple forms have this field OR if it exists in LDX
-        has_conflict = len(vals) > 1 or human_field in existing_ids
+        # Detect collision across all existing IDs in both sections
+        has_conflict = (
+            len(vals) > 1
+            or human_field in existing_string_ids
+            or human_field in existing_math_names
+        )
 
         for val in vals:
+            lookup_key = f"{val.form_name}.{val.field_name}"
+            schema_field = field_lookup.get(lookup_key)
+            field_type = schema_field.type if schema_field else "text"
+            field_unit = (schema_field.unit or "") if schema_field else ""
+
+            # Determine the final ID/Name
             if val.field_name == "notes":
-                # Notes fields use subteam_name.notes format
                 role = form_name_to_role.get(val.form_name, val.form_name)
                 final_id = f"{role}.notes"
             elif has_conflict:
-                # Use Form Name + Field Name
                 final_id = f"{_to_human(val.form_name)} {human_field}"
             else:
-                # Use Field Name
                 final_id = human_field
 
-            to_inject[final_id] = val.value
+            if field_type in _MATH_TYPES:
+                math_inject[final_id] = (val.value, field_unit)
+            else:
+                string_inject[final_id] = val.value
 
-    # Update or Add entries
-    # First, track what we've handled
-    handled_ids = set()
+    abs_path = str(path.resolve())
 
-    # Update existing entries if they match our target IDs
+    # ── Inject String entries into Layers/Details ──
+    handled_string_ids = set()
     for child in details.findall("String"):
         id_attr = child.get("Id")
-        if id_attr in to_inject:
-            child.set("Value", to_inject[id_attr])
-            handled_ids.add(id_attr)
+        if id_attr in string_inject:
+            old_val = child.get("Value", "")
+            new_val = string_inject[id_attr]
+            was_update = old_val != new_val
+            child.set("Value", new_val)
+            handled_string_ids.add(id_attr)
+            session.add(
+                InjectionLog(
+                    ldx_path=abs_path,
+                    field_id=id_attr,
+                    value=new_val,
+                    was_update=was_update,
+                    injected_at=detection_time,
+                )
+            )
 
-    # Add new entries
-    for id_attr, value_str in to_inject.items():
-        if id_attr not in handled_ids:
+    for id_attr, value_str in string_inject.items():
+        if id_attr not in handled_string_ids:
             entry = ElementTree.SubElement(details, "String")
             entry.set("Id", id_attr)
             entry.set("Value", value_str)
+            session.add(
+                InjectionLog(
+                    ldx_path=abs_path,
+                    field_id=id_attr,
+                    value=value_str,
+                    was_update=False,
+                    injected_at=detection_time,
+                )
+            )
+
+    # ── Inject MathConstant entries into Maths/MathConstants ──
+    handled_math_names = set()
+    for child in math_constants.findall("MathConstant"):
+        name_attr = child.get("Name")
+        if name_attr in math_inject:
+            old_val = child.get("Value", "")
+            new_val, unit = math_inject[name_attr]
+            was_update = old_val != new_val
+            child.set("Value", new_val)
+            child.set("Unit", unit)
+            handled_math_names.add(name_attr)
+            session.add(
+                InjectionLog(
+                    ldx_path=abs_path,
+                    field_id=name_attr,
+                    value=new_val,
+                    was_update=was_update,
+                    injected_at=detection_time,
+                )
+            )
+
+    for name_attr, (value_str, unit) in math_inject.items():
+        if name_attr not in handled_math_names:
+            entry = ElementTree.SubElement(math_constants, "MathConstant")
+            entry.set("Name", name_attr)
+            entry.set("Value", value_str)
+            entry.set("Unit", unit)
+            session.add(
+                InjectionLog(
+                    ldx_path=abs_path,
+                    field_id=name_attr,
+                    value=value_str,
+                    was_update=False,
+                    injected_at=detection_time,
+                )
+            )
 
     # Format XML with proper indentation
-    # Use ElementTree.indent if available (Python 3.9+), otherwise use custom function
     try:
         ElementTree.indent(root, space=" ", level=0)
     except AttributeError:
-        # Fallback for older Python versions
         _indent_xml(root)
 
-    # Write with proper formatting
     tree.write(path, encoding="utf-8", xml_declaration=True)

@@ -1,4 +1,5 @@
 import os
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -7,7 +8,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
-from sqlmodel import Session, select
+from sqlmodel import Session, col, func, select
 
 from .auth import (
     MIN_PASSWORD_LENGTH,
@@ -19,10 +20,10 @@ from .auth import (
     require_admin,
     verify_password,
 )
-from .database import engine, init_db
+from .database import DATA_DIR, engine, init_db
 from .forms import FormSchema, get_form_by_role, list_roles, load_forms
 from .ldx_watcher import LdxWatcher, get_watch_directory, set_watch_directory
-from .models import AuditLog, FormValue, Role, SubteamRole, User
+from .models import AuditLog, FormValue, InjectionLog, LdxFile, Role, SubteamRole, User
 from .telemetry import TelemetryChannelInfo, get_channels, telemetry_websocket
 
 app = FastAPI(title="SCR Form Manager")
@@ -328,17 +329,29 @@ def submit_form(role: str, payload: FormSubmit, current_user: User = Depends(get
     return {"status": "saved"}
 
 
-@app.get("/admin/audit", response_model=List[AuditLogView])
+class PaginatedAuditLogResponse(BaseModel):
+    items: List[AuditLogView]
+    total: int
+
+
+@app.get("/admin/audit", response_model=PaginatedAuditLogResponse)
 def audit_log(
-    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=500),
     _: User = Depends(require_admin),
-) -> List[AuditLogView]:
+) -> PaginatedAuditLogResponse:
     with Session(engine) as session:
         users = {user.id: user.username for user in session.exec(select(User)).all()}
+        total = session.exec(
+            select(func.count()).select_from(AuditLog)
+        ).one()
         logs = session.exec(
-            select(AuditLog).order_by(AuditLog.changed_at.desc()).limit(limit)
+            select(AuditLog)
+            .order_by(AuditLog.changed_at.desc())
+            .offset(offset)
+            .limit(limit)
         ).all()
-        return [
+        items = [
             AuditLogView(
                 id=log.id,
                 form_name=log.form_name,
@@ -351,6 +364,7 @@ def audit_log(
             )
             for log in logs
         ]
+        return PaginatedAuditLogResponse(items=items, total=total)
 
 
 @app.get("/admin/watch-directory")
@@ -401,6 +415,96 @@ def list_ldx_files(_: User = Depends(require_admin)) -> List[LdxFileInfo]:
         )
     files.sort(key=lambda item: item.modified_at, reverse=True)
     return files
+
+
+class InjectionLogView(BaseModel):
+    field_id: str
+    value: str
+    was_update: bool
+    injected_at: datetime
+
+
+@app.get(
+    "/admin/ldx-files/{file_name}/injections",
+    response_model=List[InjectionLogView],
+)
+def ldx_file_injections(
+    file_name: str, _: User = Depends(require_admin)
+) -> List[InjectionLogView]:
+    with Session(engine) as session:
+        logs = session.exec(
+            select(InjectionLog)
+            .where(col(InjectionLog.ldx_path).endswith(f"/{file_name}"))
+            .order_by(InjectionLog.injected_at.desc())
+        ).all()
+        return [
+            InjectionLogView(
+                field_id=log.field_id,
+                value=log.value,
+                was_update=log.was_update,
+                injected_at=log.injected_at,
+            )
+            for log in logs
+        ]
+
+
+class LdxFileStatsView(BaseModel):
+    file_name: str
+    total: int
+    updates: int
+    static: int
+
+
+@app.get("/admin/ldx-stats", response_model=List[LdxFileStatsView])
+def ldx_stats(_: User = Depends(require_admin)) -> List[LdxFileStatsView]:
+    with Session(engine) as session:
+        logs = session.exec(select(InjectionLog)).all()
+        stats: Dict[str, Dict[str, int]] = {}
+        for log in logs:
+            # Extract filename from path
+            name = Path(log.ldx_path).name
+            if name not in stats:
+                stats[name] = {"total": 0, "updates": 0, "static": 0}
+            stats[name]["total"] += 1
+            if log.was_update:
+                stats[name]["updates"] += 1
+            else:
+                stats[name]["static"] += 1
+        return [
+            LdxFileStatsView(
+                file_name=name,
+                total=s["total"],
+                updates=s["updates"],
+                static=s["static"],
+            )
+            for name, s in sorted(stats.items())
+        ]
+
+
+@app.post("/admin/export-db")
+def export_db(_: User = Depends(require_admin)) -> Dict[str, str]:
+    watch_dir = get_watch_directory()
+    if not watch_dir or not Path(watch_dir).is_dir():
+        raise HTTPException(
+            status_code=400, detail="Watch directory not configured or does not exist"
+        )
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H%M%S")
+    filename = f"export_{timestamp}.db"
+    src = DATA_DIR / "app.db"
+    dst = Path(watch_dir) / filename
+    shutil.copy2(str(src), str(dst))
+    return {"status": "exported", "filename": filename}
+
+
+@app.post("/admin/clear-data")
+def clear_data(_: User = Depends(require_admin)) -> Dict[str, str]:
+    with Session(engine) as session:
+        for model in [FormValue, AuditLog, LdxFile, InjectionLog]:
+            rows = session.exec(select(model)).all()
+            for row in rows:
+                session.delete(row)
+        session.commit()
+    return {"status": "cleared"}
 
 
 @app.get("/roles")

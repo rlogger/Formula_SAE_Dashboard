@@ -40,3 +40,22 @@ export type LdxFileInfo = {
   size: number;
   modified_at: string;
 };
+
+export type PaginatedAuditLog = {
+  items: AuditLog[];
+  total: number;
+};
+
+export type InjectionLogEntry = {
+  field_id: string;
+  value: string;
+  was_update: boolean;
+  injected_at: string;
+};
+
+export type LdxFileStats = {
+  file_name: string;
+  total: number;
+  updates: number;
+  static: number;
+};

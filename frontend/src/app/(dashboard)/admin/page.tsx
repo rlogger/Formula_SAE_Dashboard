@@ -9,7 +9,7 @@ import { useLdxFiles } from "@/hooks/use-ldx-files";
 
 export default function AdminPage() {
   const { data: users } = useUsers();
-  const { data: logs } = useAuditLog(5);
+  const { data: auditData } = useAuditLog(1, 5);
   const { data: files } = useLdxFiles();
 
   const stats = [
@@ -20,8 +20,8 @@ export default function AdminPage() {
       href: "/admin/users",
     },
     {
-      label: "Recent Changes",
-      value: logs?.length ?? 0,
+      label: "Total Changes",
+      value: auditData?.total ?? 0,
       icon: FileText,
       href: "/admin/audit",
     },
