@@ -1,11 +1,9 @@
-form_name: "DAQ Form"
+form_name: "DAQ"
 role: "DAQ"
 fields:
-  - name: "sampling_rate"
-    label: "Sampling Rate"
-    type: "number"
-    required: true
-    placeholder: "e.g., 1000 Hz"
+  - name: "special_sensors"
+    label: "Special Sensors"
+    type: "text"
   - name: "notes"
     label: "Notes"
     type: "textarea"

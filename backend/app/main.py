@@ -3,7 +3,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
@@ -23,12 +23,13 @@ from .database import engine, init_db
 from .forms import FormSchema, get_form_by_role, list_roles, load_forms
 from .ldx_watcher import LdxWatcher, get_watch_directory, set_watch_directory
 from .models import AuditLog, FormValue, Role, SubteamRole, User
+from .telemetry import TelemetryChannelInfo, get_channels, telemetry_websocket
 
 app = FastAPI(title="SCR Form Manager")
 watcher = LdxWatcher()
 
 # CORS configuration - use ALLOWED_ORIGINS env var in production
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:8080,http://localhost:5173")
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:8080,http://localhost:5173,http://localhost:3000")
 origins_list = [origin.strip() for origin in allowed_origins.split(",") if origin.strip()]
 
 app.add_middleware(
@@ -405,3 +406,15 @@ def list_ldx_files(_: User = Depends(require_admin)) -> List[LdxFileInfo]:
 @app.get("/roles")
 def roles(_: User = Depends(get_current_user)) -> List[str]:
     return list_roles()
+
+
+# --- Telemetry ---
+
+@app.get("/telemetry/channels", response_model=List[TelemetryChannelInfo])
+def telemetry_channels(_: User = Depends(get_current_user)) -> List[TelemetryChannelInfo]:
+    return get_channels()
+
+
+@app.websocket("/ws/telemetry")
+async def ws_telemetry(websocket: WebSocket, token: str = Query(...)) -> None:
+    await telemetry_websocket(websocket, token)
