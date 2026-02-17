@@ -1,0 +1,36 @@
+{$DOMAIN:localhost} {
+	# Backend routes (no /api prefix — matches FastAPI paths directly)
+	handle /auth/* {
+		reverse_proxy backend:8000
+	}
+
+	handle /admin/* {
+		reverse_proxy backend:8000
+	}
+
+	handle /forms/* {
+		reverse_proxy backend:8000
+	}
+
+	handle /roles {
+		reverse_proxy backend:8000
+	}
+
+	handle /telemetry/* {
+		reverse_proxy backend:8000
+	}
+
+	handle /health {
+		reverse_proxy backend:8000
+	}
+
+	# WebSocket telemetry
+	handle /ws/* {
+		reverse_proxy backend:8000
+	}
+
+	# Frontend (everything else)
+	handle {
+		reverse_proxy frontend:3000
+	}
+}

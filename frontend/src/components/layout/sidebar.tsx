@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -37,7 +38,7 @@ export function Sidebar() {
       <div className="flex h-full flex-col">
         <div className="flex h-14 items-center border-b px-4">
           <Link href="/forms" className="flex items-center gap-2 font-semibold">
-            <Activity className="h-5 w-5" />
+            <Image src="/images/fsae_logo.jpg" alt="SCR" width={24} height={24} className="rounded" />
             <span>SCR Dashboard</span>
           </Link>
         </div>

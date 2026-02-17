@@ -94,6 +94,11 @@ class LdxFileInfo(BaseModel):
     modified_at: datetime
 
 
+@app.get("/health")
+def health() -> Dict[str, str]:
+    return {"status": "ok"}
+
+
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()

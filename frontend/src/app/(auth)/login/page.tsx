@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Gauge, Loader2 } from "lucide-react";
+import Image from "next/image";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,8 +42,8 @@ export default function LoginPage() {
   return (
     <Card className="w-full max-w-md mx-auto animate-fade-in-up lg:bg-card lg:backdrop-blur-none backdrop-blur-md bg-card/80">
       <CardHeader className="text-center">
-        <div className="flex justify-center mb-2">
-          <Gauge className="h-9 w-9 text-[hsl(var(--racing))]" />
+        <div className="flex justify-center mb-3">
+          <Image src="/images/fsae_logo.jpg" alt="SCR Racing" width={48} height={48} className="rounded-lg" />
         </div>
         <CardTitle className="text-2xl font-bold">
           SCR Racing Dashboard
