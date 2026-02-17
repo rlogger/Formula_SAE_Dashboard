@@ -23,11 +23,11 @@ export class TelemetryWebSocket {
     if (this.ws?.readyState === WebSocket.OPEN) return;
 
     let wsBase: string;
-    if (API_URL) {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    if (API_URL.startsWith("http")) {
       wsBase = API_URL.replace(/^http/, "ws");
     } else {
-      const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-      wsBase = `${proto}//${window.location.host}`;
+      wsBase = `${proto}//${window.location.host}${API_URL}`;
     }
     this.ws = new WebSocket(
       `${wsBase}/ws/telemetry?token=${encodeURIComponent(this.token)}`
