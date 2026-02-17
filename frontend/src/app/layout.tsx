@@ -20,6 +20,10 @@ const geistMono = localFont({
 export const metadata: Metadata = {
   title: "SCR Dashboard",
   description: "Formula SAE Team Dashboard",
+  icons: {
+    icon: "/images/fsae_logo.jpg",
+    apple: "/images/fsae_logo.jpg",
+  },
 };
 
 export default function RootLayout({

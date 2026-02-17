@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -52,7 +53,7 @@ export function MobileNav() {
         <SheetContent side="left" className="w-64 p-0">
           <SheetHeader className="border-b px-4 py-3">
             <SheetTitle className="flex items-center gap-2 text-left">
-              <Activity className="h-5 w-5" />
+              <Image src="/images/fsae_logo.jpg" alt="SCR" width={24} height={24} className="rounded" />
               SCR Dashboard
             </SheetTitle>
             <SheetDescription className="sr-only">

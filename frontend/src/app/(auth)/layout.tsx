@@ -14,6 +14,8 @@ export default function AuthLayout({
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/20" />
         {/* Branding overlay text */}
         <div className="relative z-10 flex flex-col justify-end p-10 text-white">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/images/fsae_logo.jpg" alt="SCR Racing" width={56} height={56} className="rounded-xl mb-4" />
           <h1 className="text-4xl font-bold tracking-tight">SCR Racing</h1>
           <p className="mt-2 text-lg text-white/80">
             Engineering speed. Driving innovation.
