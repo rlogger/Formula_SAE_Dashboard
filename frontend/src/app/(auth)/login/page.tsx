@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Activity, Loader2 } from "lucide-react";
+import { Gauge, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,6 +10,7 @@ import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -38,14 +39,16 @@ export default function LoginPage() {
   };
 
   return (
-    <Card className="w-full max-w-md mx-4">
+    <Card className="w-full max-w-md mx-auto animate-fade-in-up lg:bg-card lg:backdrop-blur-none backdrop-blur-md bg-card/80">
       <CardHeader className="text-center">
         <div className="flex justify-center mb-2">
-          <Activity className="h-8 w-8" />
+          <Gauge className="h-9 w-9 text-[hsl(var(--racing))]" />
         </div>
-        <CardTitle className="text-2xl">SCR Dashboard</CardTitle>
+        <CardTitle className="text-2xl font-bold">
+          SCR Racing Dashboard
+        </CardTitle>
         <CardDescription>
-          Sign in to your Formula SAE team account
+          Sign in to access your team portal
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -75,12 +78,19 @@ export default function LoginPage() {
           {error && (
             <p className="text-sm text-destructive">{error}</p>
           )}
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button
+            type="submit"
+            className="w-full bg-[hsl(var(--racing))] hover:bg-[hsl(var(--racing-hover))] text-white"
+            disabled={loading}
+          >
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {loading ? "Signing in..." : "Sign in"}
           </Button>
         </form>
       </CardContent>
+      <CardFooter className="justify-center">
+        <p className="text-xs text-muted-foreground">Formula SAE Team Portal</p>
+      </CardFooter>
     </Card>
   );
 }
