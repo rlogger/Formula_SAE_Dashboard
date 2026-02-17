@@ -24,6 +24,8 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 222.2 84% 4.9%;
     --radius: 0.5rem;
+    --racing: 0 72% 51%;
+    --racing-hover: 0 72% 44%;
   }
 
   .dark {
@@ -46,6 +48,8 @@
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
+    --racing: 0 72% 56%;
+    --racing-hover: 0 72% 49%;
   }
 }
 
@@ -56,4 +60,20 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Login card entrance animation */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.5s ease-out;
 }
