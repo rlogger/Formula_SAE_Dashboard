@@ -28,7 +28,7 @@ services:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
       - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env}
       - LDX_WATCH_DIR=/ldx
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://${DOMAIN:-localhost},http://localhost}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost}
     volumes:
       - ./backend/data:/app/data
       - ./ldx:/ldx
@@ -43,7 +43,7 @@ services:
     build:
       context: ./frontend
       args:
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
+        - NEXT_PUBLIC_API_URL=
     restart: unless-stopped
     expose:
       - "3000"

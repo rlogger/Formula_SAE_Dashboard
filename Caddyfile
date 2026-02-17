@@ -1,35 +1,12 @@
 {$DOMAIN:localhost} {
-	# Backend routes (no /api prefix — matches FastAPI paths directly)
-	handle /auth/* {
+	# All backend API calls go through /api/* prefix
+	# Caddy strips the prefix before forwarding to FastAPI
+	handle /api/* {
+		uri strip_prefix /api
 		reverse_proxy backend:8000
 	}
 
-	handle /admin/* {
-		reverse_proxy backend:8000
-	}
-
-	handle /forms/* {
-		reverse_proxy backend:8000
-	}
-
-	handle /roles {
-		reverse_proxy backend:8000
-	}
-
-	handle /telemetry/* {
-		reverse_proxy backend:8000
-	}
-
-	handle /health {
-		reverse_proxy backend:8000
-	}
-
-	# WebSocket telemetry
-	handle /ws/* {
-		reverse_proxy backend:8000
-	}
-
-	# Frontend (everything else)
+	# Frontend (everything else — pages, static assets)
 	handle {
 		reverse_proxy frontend:3000
 	}
