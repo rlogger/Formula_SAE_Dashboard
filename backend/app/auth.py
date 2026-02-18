@@ -91,6 +91,11 @@ def ensure_default_admin(session: Session) -> Optional[User]:
         return None
     admin = session.exec(select(User).where(User.username == username)).first()
     if admin:
+        admin.hashed_password = get_password_hash(password)
+        admin.is_admin = True
+        session.add(admin)
+        session.commit()
+        session.refresh(admin)
         return admin
     admin = User(
         username=username,
