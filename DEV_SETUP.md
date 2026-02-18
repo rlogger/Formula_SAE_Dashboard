@@ -275,3 +275,12 @@ Then re-enter the shell:
 exit
 nix-shell
 ```
+
+---
+
+Start the backend:
+
+   ADMIN_USERNAME=admin ADMIN_PASSWORD=change_this_password_123
+   JWT_SECRET=dev-secret .venv/bin/uvicorn app.main:app --reload --host
+   0.0.0.0 --port 8000
+

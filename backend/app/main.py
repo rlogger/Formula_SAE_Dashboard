@@ -386,7 +386,7 @@ def set_watch_dir(
         raise HTTPException(status_code=400, detail="Path is required")
     # Resolve and validate path to prevent path traversal
     try:
-        resolved = Path(path).resolve()
+        resolved = Path(path).expanduser().resolve()
     except (ValueError, OSError):
         raise HTTPException(status_code=400, detail="Invalid path")
     if not resolved.is_dir():
