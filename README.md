@@ -16,8 +16,8 @@ section.
 
 ## Tech Stack
 - Backend: FastAPI + SQLModel + SQLite
-- Frontend: React + Vite
-- Deployment: Docker Compose
+- Frontend: Next.js 14 (App Router) + shadcn/ui + Tailwind CSS
+- Deployment: Docker Compose + Caddy reverse proxy
 
 ## Roles
 Subteam roles are:
@@ -58,10 +58,11 @@ Backend (`docker-compose.yml`):
 - `LDX_WATCH_DIR`: default watch directory (used if admin has not set one)
 
 Frontend:
-- `VITE_API_URL`: backend base URL (baked at build time)
+- `NEXT_PUBLIC_API_URL`: backend base URL (baked at build time; leave unset in Docker to use Caddy proxy)
 
 ## Local Development (without Docker)
-Backend:
+
+### Backend
 1. `cd backend`
 2. `python -m venv .venv`
 3. `source .venv/bin/activate`
@@ -69,13 +70,14 @@ Backend:
 5. `export ADMIN_USERNAME=admin ADMIN_PASSWORD=admin123 JWT_SECRET=change-me`
 6. `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
 
-Frontend:
+### Frontend
 1. `cd frontend`
 2. `npm install`
-3. `VITE_API_URL=http://localhost:8000 npm run dev`
+3. `NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev`
+4. Open `http://localhost:3000`
 
 ## Docker Deployment
-1. Make sure Docker is installed on the OpenMediaVault host.
+1. Make sure Docker is installed on the host.
 2. Create a directory for the project and place this repo there.
 3. Copy `.env.example` to `.env` and configure your secrets:
    ```
@@ -92,11 +94,11 @@ Frontend:
    ```
 
 ### Access
-- Frontend: `http://<host>:8080`
-- Backend API: `http://<host>:8000`
+- Frontend: `http://<host>` (port 80 via Caddy)
+- Backend API: `http://<host>/api` (proxied through Caddy)
 
 ### First Login
-Use the admin credentials from `docker-compose.yml` (default is `admin/admin123`).
+Use the admin credentials from your `.env` file (default is `admin/admin123`).
 Change the password after first login.
 
 ## Admin Workflow
