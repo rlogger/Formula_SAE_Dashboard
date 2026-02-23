@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -16,6 +16,10 @@ type Props = {
 export function WatchDirectoryForm({ initialPath, onSaved }: Props) {
   const { token } = useAuth();
   const [path, setPath] = useState(initialPath);
+
+  useEffect(() => {
+    setPath(initialPath);
+  }, [initialPath]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 

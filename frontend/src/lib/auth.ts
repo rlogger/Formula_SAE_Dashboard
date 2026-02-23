@@ -13,8 +13,15 @@ export async function loginRequest(
     body,
   });
   if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || "Login failed");
+    let errorMsg = "Login failed";
+    const text = await response.text();
+    try {
+      const data = JSON.parse(text);
+      errorMsg = data.detail || data.message || errorMsg;
+    } catch {
+      errorMsg = text || errorMsg;
+    }
+    throw new Error(errorMsg);
   }
   const data = (await response.json()) as { access_token: string };
   return data.access_token;

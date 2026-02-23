@@ -28,6 +28,8 @@ class FormSchema(BaseModel):
 
 FORMS_DIR = Path(os.getenv("FORMS_DIR", Path(__file__).resolve().parent.parent / "forms"))
 
+_forms_cache: Optional[List[FormSchema]] = None
+
 
 def _load_file(path: Path) -> Dict:
     if path.suffix in {".yaml", ".yml"}:
@@ -38,6 +40,9 @@ def _load_file(path: Path) -> Dict:
 
 
 def load_forms() -> List[FormSchema]:
+    global _forms_cache
+    if _forms_cache is not None:
+        return _forms_cache
     forms: List[FormSchema] = []
     if not FORMS_DIR.exists():
         return forms
@@ -49,6 +54,7 @@ def load_forms() -> List[FormSchema]:
             forms.append(FormSchema.model_validate(data))
         except ValidationError as exc:
             raise ValueError(f"Invalid form schema in {path.name}: {exc}") from exc
+    _forms_cache = forms
     return forms
 
 

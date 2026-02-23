@@ -1,6 +1,7 @@
 import asyncio
 import os
-from datetime import datetime
+import traceback
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 from xml.etree import ElementTree
@@ -55,8 +56,6 @@ class LdxWatcher:
             except Exception as e:
                 # Log errors but keep the watcher alive
                 print(f"Error in LDX watcher scan: {e}")
-                import traceback
-
                 traceback.print_exc()
             await asyncio.sleep(self.interval_seconds)
 
@@ -92,7 +91,7 @@ class LdxWatcher:
 
                 # This is a new file - record the detection time (current UTC time)
                 # This represents when we first detected the file in the directory
-                detection_time = datetime.utcnow()
+                detection_time = datetime.now(timezone.utc)
 
                 # Inject the most recent form values across all fields
                 # Each new file gets the latest submission for each field
@@ -117,8 +116,6 @@ class LdxWatcher:
         except Exception as e:
             # Log the error but don't crash the watcher
             print(f"Error processing LDX file {path}: {e}")
-            import traceback
-
             traceback.print_exc()
 
 

@@ -1,6 +1,7 @@
 import os
 import shutil
-from datetime import datetime
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -8,7 +9,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
-from sqlmodel import Session, col, func, select
+from sqlmodel import Session, col, delete, func, select
 
 from .auth import (
     MIN_PASSWORD_LENGTH,
@@ -26,8 +27,21 @@ from .ldx_watcher import LdxWatcher, get_watch_directory, set_watch_directory
 from .models import AuditLog, FormValue, InjectionLog, LdxFile, Role, SubteamRole, User
 from .telemetry import TelemetryChannelInfo, get_channels, telemetry_websocket
 
-app = FastAPI(title="SCR Form Manager")
 watcher = LdxWatcher()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    with Session(engine) as session:
+        ensure_roles(session)
+        ensure_default_admin(session)
+    watcher.start()
+    yield
+    watcher.stop()
+
+
+app = FastAPI(title="SCR Form Manager", lifespan=lifespan)
 
 # CORS configuration - use ALLOWED_ORIGINS env var in production
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:8080,http://localhost:5173,http://localhost:3000")
@@ -99,20 +113,6 @@ def health() -> Dict[str, str]:
     return {"status": "ok"}
 
 
-@app.on_event("startup")
-def on_startup() -> None:
-    init_db()
-    with Session(engine) as session:
-        ensure_roles(session)
-        ensure_default_admin(session)
-    watcher.start()
-
-
-@app.on_event("shutdown")
-def on_shutdown() -> None:
-    watcher.stop()
-
-
 def _user_to_view(user: User) -> UserView:
     return UserView(
         id=user.id,
@@ -160,9 +160,13 @@ def _ensure_access(role: str, user: User) -> None:
 def login(form_data: OAuth2PasswordRequestForm = Depends()) -> TokenResponse:
     with Session(engine) as session:
         user = session.exec(select(User).where(User.username == form_data.username)).first()
-        if not user or not verify_password(form_data.password, user.hashed_password):
+        if not user:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Account not found"
+            )
+        if not verify_password(form_data.password, user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect password"
             )
         token = create_access_token(user.username)
         return TokenResponse(access_token=token)
@@ -307,7 +311,7 @@ def submit_form(role: str, payload: FormSubmit, current_user: User = Depends(get
             old_value = current.value if current else None
             if current:
                 current.value = new_value_str
-                current.updated_at = datetime.utcnow()
+                current.updated_at = datetime.now(timezone.utc)
                 current.updated_by = current_user.id
             else:
                 session.add(
@@ -315,7 +319,7 @@ def submit_form(role: str, payload: FormSubmit, current_user: User = Depends(get
                         form_name=form.form_name,
                         field_name=field_name,
                         value=new_value_str,
-                        updated_at=datetime.utcnow(),
+                        updated_at=datetime.now(timezone.utc),
                         updated_by=current_user.id,
                     )
                 )
@@ -326,7 +330,7 @@ def submit_form(role: str, payload: FormSubmit, current_user: User = Depends(get
                         field_name=field_name,
                         old_value=old_value,
                         new_value=new_value_str,
-                        changed_at=datetime.utcnow(),
+                        changed_at=datetime.now(timezone.utc),
                         changed_by=current_user.id,
                     )
                 )
@@ -415,7 +419,7 @@ def list_ldx_files(_: User = Depends(require_admin)) -> List[LdxFileInfo]:
             LdxFileInfo(
                 name=path.name,
                 size=stat.st_size,
-                modified_at=datetime.fromtimestamp(stat.st_mtime),
+                modified_at=datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc),
             )
         )
     files.sort(key=lambda item: item.modified_at, reverse=True)
@@ -463,24 +467,27 @@ class LdxFileStatsView(BaseModel):
 @app.get("/admin/ldx-stats", response_model=List[LdxFileStatsView])
 def ldx_stats(_: User = Depends(require_admin)) -> List[LdxFileStatsView]:
     with Session(engine) as session:
-        logs = session.exec(select(InjectionLog)).all()
+        rows = session.exec(
+            select(
+                InjectionLog.ldx_path,
+                func.count().label("total"),
+                func.sum(InjectionLog.was_update.cast(int)).label("updates"),
+            )
+            .group_by(InjectionLog.ldx_path)
+        ).all()
         stats: Dict[str, Dict[str, int]] = {}
-        for log in logs:
-            # Extract filename from path
-            name = Path(log.ldx_path).name
+        for ldx_path, total, updates in rows:
+            name = Path(ldx_path).name
             if name not in stats:
-                stats[name] = {"total": 0, "updates": 0, "static": 0}
-            stats[name]["total"] += 1
-            if log.was_update:
-                stats[name]["updates"] += 1
-            else:
-                stats[name]["static"] += 1
+                stats[name] = {"total": 0, "updates": 0}
+            stats[name]["total"] += total
+            stats[name]["updates"] += updates or 0
         return [
             LdxFileStatsView(
                 file_name=name,
                 total=s["total"],
                 updates=s["updates"],
-                static=s["static"],
+                static=s["total"] - s["updates"],
             )
             for name, s in sorted(stats.items())
         ]
@@ -493,7 +500,7 @@ def export_db(_: User = Depends(require_admin)) -> Dict[str, str]:
         raise HTTPException(
             status_code=400, detail="Watch directory not configured or does not exist"
         )
-    timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S")
     filename = f"export_{timestamp}.db"
     src = DATA_DIR / "app.db"
     dst = Path(watch_dir) / filename
@@ -504,10 +511,8 @@ def export_db(_: User = Depends(require_admin)) -> Dict[str, str]:
 @app.post("/admin/clear-data")
 def clear_data(_: User = Depends(require_admin)) -> Dict[str, str]:
     with Session(engine) as session:
-        for model in [FormValue, AuditLog, LdxFile, InjectionLog]:
-            rows = session.exec(select(model)).all()
-            for row in rows:
-                session.delete(row)
+        for model in [InjectionLog, LdxFile, AuditLog, FormValue]:
+            session.exec(delete(model))
         session.commit()
     return {"status": "cleared"}
 

@@ -1,8 +1,12 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import List, Optional
 
 from sqlmodel import Field, Relationship, SQLModel
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class SubteamRole(str, Enum):
@@ -50,7 +54,7 @@ class FormValue(SQLModel, table=True):
     form_name: str = Field(index=True)
     field_name: str = Field(index=True)
     value: str
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
     updated_by: Optional[int] = Field(default=None, foreign_key="user.id")
 
 
@@ -60,7 +64,7 @@ class AuditLog(SQLModel, table=True):
     field_name: str = Field(index=True)
     old_value: Optional[str] = None
     new_value: Optional[str] = None
-    changed_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    changed_at: datetime = Field(default_factory=_utcnow, index=True)
     changed_by: Optional[int] = Field(default=None, foreign_key="user.id")
 
 
@@ -68,7 +72,7 @@ class LdxFile(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     path: str = Field(index=True, unique=True)
     mtime: float
-    processed_at: datetime = Field(default_factory=datetime.utcnow)
+    processed_at: datetime = Field(default_factory=_utcnow)
 
 
 class InjectionLog(SQLModel, table=True):
@@ -77,4 +81,4 @@ class InjectionLog(SQLModel, table=True):
     field_id: str
     value: str
     was_update: bool = False
-    injected_at: datetime = Field(default_factory=datetime.utcnow)
+    injected_at: datetime = Field(default_factory=_utcnow)

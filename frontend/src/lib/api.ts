@@ -17,8 +17,15 @@ export async function apiFetch<T>(
     headers,
   });
   if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || "Request failed");
+    let errorMsg = "Request failed";
+    const text = await response.text();
+    try {
+      const data = JSON.parse(text);
+      errorMsg = data.detail || data.message || errorMsg;
+    } catch {
+      errorMsg = text || errorMsg;
+    }
+    throw new Error(errorMsg);
   }
   return response.json() as Promise<T>;
 }

@@ -11,6 +11,7 @@ export const ROLES = [
   "chasis",
   "aero",
   "ergo",
+  "powertrain",
 ] as const;
 
 export const ROUTES = {
