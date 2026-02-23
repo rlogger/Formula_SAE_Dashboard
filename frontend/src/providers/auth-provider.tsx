@@ -27,26 +27,24 @@ export const AuthContext = createContext<AuthContextType>({
   user: null,
   token: null,
   loading: true,
-  login: async () => {},
-  logout: () => {},
+  login: async () => { },
+  logout: () => { },
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [state, setState] = useState<AuthState>({
+    user: null,
+    token: null,
+    loading: true,
+  });
 
   const fetchUser = useCallback(async (t: string) => {
     try {
       const u = await apiFetch<User>("/auth/me", {}, t);
-      setUser(u);
-      setToken(t);
+      setState({ user: u, token: t, loading: false });
     } catch {
       removeStoredToken();
-      setUser(null);
-      setToken(null);
-    } finally {
-      setLoading(false);
+      setState({ user: null, token: null, loading: false });
     }
   }, []);
 
@@ -55,7 +53,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (stored) {
       fetchUser(stored);
     } else {
-      setLoading(false);
+      setState((prev) => ({ ...prev, loading: false }));
     }
   }, [fetchUser]);
 
@@ -70,13 +68,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(() => {
     removeStoredToken();
-    setUser(null);
-    setToken(null);
+    setState({ user: null, token: null, loading: false });
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, logout }}>
+    <AuthContext.Provider value={{ ...state, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
 }
+
+type AuthState = {
+  user: User | null;
+  token: string | null;
+  loading: boolean;
+};

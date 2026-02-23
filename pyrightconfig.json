@@ -1,0 +1,15 @@
+{
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "backend/.venv",
+    "backend/venv"
+  ],
+  "executionEnvironments": [
+    {
+      "root": "backend",
+      "pythonPath": "backend/.venv/bin/python",
+      "extraPaths": ["."]
+    }
+  ]
+}

@@ -27,11 +27,15 @@ export function FormRenderer({ schema, values, onSubmit }: Props) {
 
   useEffect(() => {
     setDraft(values);
+  }, [values]);
+
+  useEffect(() => {
     setMessage(null);
-  }, [values, schema.role]);
+  }, [schema.role]);
 
   const updateField = (name: string, value: string) => {
     setDraft((prev) => ({ ...prev, [name]: value }));
+    setMessage(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

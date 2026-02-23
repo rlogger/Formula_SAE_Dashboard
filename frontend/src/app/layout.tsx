@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/providers/theme-provider";
 import { AuthProvider } from "@/providers/auth-provider";
 import { SWRProvider } from "@/providers/swr-provider";
 import { WebSocketProvider } from "@/providers/websocket-provider";
+import { ErrorBoundary } from "@/components/shared/error-boundary";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -36,18 +37,20 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
       >
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <SWRProvider>
-            <AuthProvider>
-              <WebSocketProvider>{children}</WebSocketProvider>
-            </AuthProvider>
-          </SWRProvider>
-        </ThemeProvider>
+        <ErrorBoundary>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <SWRProvider>
+              <AuthProvider>
+                <WebSocketProvider>{children}</WebSocketProvider>
+              </AuthProvider>
+            </SWRProvider>
+          </ThemeProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );

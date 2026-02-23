@@ -27,13 +27,24 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!username.trim() || !password.trim()) {
+      setError("Please enter both username and password");
+      return;
+    }
     setError(null);
     setLoading(true);
     try {
       await login(username, password);
       router.push("/forms");
     } catch (err) {
-      setError((err as Error).message);
+      const msg = (err as Error).message;
+      if (msg.includes("Account not found")) {
+        setError("This account does not exist. Please check your username.");
+      } else if (msg.includes("Incorrect password")) {
+        setError("Incorrect password. Please try again.");
+      } else {
+        setError(msg || "An unexpected error occurred. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
