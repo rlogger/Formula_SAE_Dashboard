@@ -65,6 +65,8 @@ export default function FormsPage() {
         <FormRenderer
           schema={activeForm}
           values={valuesData?.values || {}}
+          timestamps={valuesData?.timestamps}
+          previousValues={valuesData?.previous_values}
           onSubmit={handleSubmit}
         />
       )}

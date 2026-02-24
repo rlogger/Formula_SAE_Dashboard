@@ -10,7 +10,7 @@ from sqlmodel import Session, select
 
 from .database import engine
 from .forms import FormField, load_forms
-from .models import FormValue, InjectionLog, LdxFile, Setting, User
+from .models import AuditLog, FormValue, InjectionLog, LdxFile, Setting, User
 
 
 def _indent_xml(elem, level=0):
@@ -249,6 +249,35 @@ def inject_values_into_ldx(
             field_type = schema_field.type if schema_field else "text"
             field_unit = (schema_field.unit or "") if schema_field else ""
 
+            # --- Validity window check: skip stale values ---
+            if schema_field and schema_field.validity_window is not None:
+                age = (detection_time - val.updated_at).total_seconds()
+                if age > schema_field.validity_window:
+                    print(
+                        f"Skipping {val.field_name}: value is {age:.0f}s old "
+                        f"(window: {schema_field.validity_window}s)"
+                    )
+                    continue
+
+            # --- Lookback: use previous submission value ---
+            inject_value = val.value
+            if schema_field and schema_field.lookback:
+                prev_logs = session.exec(
+                    select(AuditLog)
+                    .where(
+                        AuditLog.form_name == val.form_name,
+                        AuditLog.field_name == val.field_name,
+                    )
+                    .order_by(AuditLog.changed_at.desc())
+                ).all()
+                if len(prev_logs) >= 2:
+                    inject_value = prev_logs[1].new_value or ""
+                else:
+                    print(
+                        f"Skipping {val.field_name}: lookback field with no previous value"
+                    )
+                    continue
+
             # Determine the final ID/Name
             if val.field_name == "notes":
                 role = form_name_to_role.get(val.form_name, val.form_name)
@@ -259,9 +288,9 @@ def inject_values_into_ldx(
                 final_id = human_field
 
             if field_type in _MATH_TYPES:
-                math_inject[final_id] = (val.value, field_unit)
+                math_inject[final_id] = (inject_value, field_unit)
             else:
-                string_inject[final_id] = val.value
+                string_inject[final_id] = inject_value
 
     abs_path = str(path.resolve())
 

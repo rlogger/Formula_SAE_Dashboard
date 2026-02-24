@@ -55,6 +55,8 @@ export default function FormByRolePage({
       <FormRenderer
         schema={form}
         values={valuesData?.values || {}}
+        timestamps={valuesData?.timestamps}
+        previousValues={valuesData?.previous_values}
         onSubmit={handleSubmit}
       />
     </div>

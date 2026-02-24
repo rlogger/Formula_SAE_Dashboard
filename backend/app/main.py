@@ -24,8 +24,11 @@ from .auth import (
 from .database import DATA_DIR, engine, init_db
 from .forms import FormSchema, get_form_by_role, list_roles, load_forms
 from .ldx_watcher import LdxWatcher, get_watch_directory, set_watch_directory
-from .models import AuditLog, FormValue, InjectionLog, LdxFile, Role, SubteamRole, User
-from .telemetry import TelemetryChannelInfo, get_channels, telemetry_websocket
+from .models import (
+    AuditLog, DashboardPreference, FormValue, InjectionLog, LdxFile,
+    Role, SubteamRole, TelemetrySensor, User,
+)
+from .telemetry import TelemetryChannelInfo, ensure_default_sensors, get_channels, telemetry_websocket
 
 watcher = LdxWatcher()
 
@@ -36,6 +39,7 @@ async def lifespan(app: FastAPI):
     with Session(engine) as session:
         ensure_roles(session)
         ensure_default_admin(session)
+        ensure_default_sensors(session)
     watcher.start()
     yield
     watcher.stop()
@@ -85,6 +89,8 @@ class RolesUpdate(BaseModel):
 
 class FormValuesResponse(BaseModel):
     values: Dict[str, Optional[str]]
+    timestamps: Dict[str, float] = {}
+    previous_values: Dict[str, Optional[str]] = {}
 
 
 class FormSubmit(BaseModel):
@@ -281,12 +287,36 @@ def get_form_values(role: str, current_user: User = Depends(get_current_user)) -
     form = get_form_by_role(role)
     if not form:
         raise HTTPException(status_code=404, detail="Form not found")
+
+    lookback_fields = {f.name for f in form.fields if f.lookback}
+
     with Session(engine) as session:
         values = session.exec(
             select(FormValue).where(FormValue.form_name == form.form_name)
         ).all()
-        value_map = {value.field_name: value.value for value in values}
-        return FormValuesResponse(values=value_map)
+        value_map = {v.field_name: v.value for v in values}
+        ts_map = {v.field_name: v.updated_at.timestamp() for v in values}
+
+        prev_map: Dict[str, Optional[str]] = {}
+        for field_name in lookback_fields:
+            logs = session.exec(
+                select(AuditLog)
+                .where(
+                    AuditLog.form_name == form.form_name,
+                    AuditLog.field_name == field_name,
+                )
+                .order_by(AuditLog.changed_at.desc())
+            ).all()
+            if len(logs) >= 2:
+                prev_map[field_name] = logs[1].new_value
+            else:
+                prev_map[field_name] = None
+
+        return FormValuesResponse(
+            values=value_map,
+            timestamps=ts_map,
+            previous_values=prev_map,
+        )
 
 
 @app.post("/forms/{role}/submit")
@@ -532,3 +562,168 @@ def telemetry_channels(_: User = Depends(get_current_user)) -> List[TelemetryCha
 @app.websocket("/ws/telemetry")
 async def ws_telemetry(websocket: WebSocket, token: str = Query(...)) -> None:
     await telemetry_websocket(websocket, token)
+
+
+# --- Dashboard Preferences ---
+
+class DashboardConfigPayload(BaseModel):
+    config: str  # JSON string
+
+
+@app.get("/telemetry/preferences")
+def get_preferences(
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Optional[str]]:
+    with Session(engine) as session:
+        pref = session.get(DashboardPreference, current_user.id)
+        return {"config": pref.config if pref else None}
+
+
+@app.put("/telemetry/preferences")
+def save_preferences(
+    payload: DashboardConfigPayload,
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, str]:
+    with Session(engine) as session:
+        pref = session.get(DashboardPreference, current_user.id)
+        if pref:
+            pref.config = payload.config
+            pref.updated_at = datetime.now(timezone.utc)
+        else:
+            pref = DashboardPreference(
+                user_id=current_user.id,
+                config=payload.config,
+            )
+        session.add(pref)
+        session.commit()
+    return {"status": "saved"}
+
+
+# --- Admin Sensor CRUD ---
+
+class SensorCreate(BaseModel):
+    sensor_id: str
+    name: str
+    unit: str
+    min_value: float = 0
+    max_value: float = 100
+    group: str = "Other"
+    sort_order: int = 0
+    enabled: bool = True
+
+
+class SensorUpdate(BaseModel):
+    name: Optional[str] = None
+    unit: Optional[str] = None
+    min_value: Optional[float] = None
+    max_value: Optional[float] = None
+    group: Optional[str] = None
+    sort_order: Optional[int] = None
+    enabled: Optional[bool] = None
+
+
+class SensorView(BaseModel):
+    id: int
+    sensor_id: str
+    name: str
+    unit: str
+    min_value: float
+    max_value: float
+    group: str
+    sort_order: int
+    enabled: bool
+
+
+@app.get("/admin/sensors", response_model=List[SensorView])
+def list_sensors(_: User = Depends(require_admin)) -> List[SensorView]:
+    with Session(engine) as session:
+        sensors = session.exec(
+            select(TelemetrySensor).order_by(TelemetrySensor.sort_order)
+        ).all()
+        return [
+            SensorView(
+                id=s.id,
+                sensor_id=s.sensor_id,
+                name=s.name,
+                unit=s.unit,
+                min_value=s.min_value,
+                max_value=s.max_value,
+                group=s.group,
+                sort_order=s.sort_order,
+                enabled=s.enabled,
+            )
+            for s in sensors
+        ]
+
+
+@app.post("/admin/sensors", response_model=SensorView)
+def create_sensor(
+    payload: SensorCreate, _: User = Depends(require_admin)
+) -> SensorView:
+    with Session(engine) as session:
+        existing = session.exec(
+            select(TelemetrySensor).where(
+                TelemetrySensor.sensor_id == payload.sensor_id
+            )
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Sensor ID already exists")
+        sensor = TelemetrySensor(**payload.model_dump())
+        session.add(sensor)
+        session.commit()
+        session.refresh(sensor)
+        return SensorView(
+            id=sensor.id,
+            sensor_id=sensor.sensor_id,
+            name=sensor.name,
+            unit=sensor.unit,
+            min_value=sensor.min_value,
+            max_value=sensor.max_value,
+            group=sensor.group,
+            sort_order=sensor.sort_order,
+            enabled=sensor.enabled,
+        )
+
+
+@app.put("/admin/sensors/{sensor_id}", response_model=SensorView)
+def update_sensor(
+    sensor_id: str, payload: SensorUpdate, _: User = Depends(require_admin)
+) -> SensorView:
+    with Session(engine) as session:
+        sensor = session.exec(
+            select(TelemetrySensor).where(TelemetrySensor.sensor_id == sensor_id)
+        ).first()
+        if not sensor:
+            raise HTTPException(status_code=404, detail="Sensor not found")
+        update_data = payload.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(sensor, key, value)
+        session.add(sensor)
+        session.commit()
+        session.refresh(sensor)
+        return SensorView(
+            id=sensor.id,
+            sensor_id=sensor.sensor_id,
+            name=sensor.name,
+            unit=sensor.unit,
+            min_value=sensor.min_value,
+            max_value=sensor.max_value,
+            group=sensor.group,
+            sort_order=sensor.sort_order,
+            enabled=sensor.enabled,
+        )
+
+
+@app.delete("/admin/sensors/{sensor_id}")
+def delete_sensor(
+    sensor_id: str, _: User = Depends(require_admin)
+) -> Dict[str, str]:
+    with Session(engine) as session:
+        sensor = session.exec(
+            select(TelemetrySensor).where(TelemetrySensor.sensor_id == sensor_id)
+        ).first()
+        if not sensor:
+            raise HTTPException(status_code=404, detail="Sensor not found")
+        session.delete(sensor)
+        session.commit()
+    return {"status": "deleted"}
