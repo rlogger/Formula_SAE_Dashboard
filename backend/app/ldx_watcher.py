@@ -138,6 +138,13 @@ def set_watch_directory(value: str) -> None:
         session.commit()
 
 
+def _ensure_utc(dt: datetime) -> datetime:
+    """SQLite drops tzinfo — treat stored datetimes as UTC."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 def _to_human(s: str) -> str:
     return s.replace("_", " ").strip().title()
 
@@ -251,7 +258,7 @@ def inject_values_into_ldx(
 
             # --- Validity window check: skip stale values ---
             if schema_field and schema_field.validity_window is not None:
-                age = (detection_time - val.updated_at).total_seconds()
+                age = (detection_time - _ensure_utc(val.updated_at)).total_seconds()
                 if age > schema_field.validity_window:
                     print(
                         f"Skipping {val.field_name}: value is {age:.0f}s old "
@@ -259,22 +266,38 @@ def inject_values_into_ldx(
                     )
                     continue
 
-            # --- Lookback: use previous submission value ---
+            # --- Lookback: use value at the time of the previous run ---
             inject_value = val.value
             if schema_field and schema_field.lookback:
-                prev_logs = session.exec(
+                # Find the most recent LdxFile before this detection
+                last_run = session.exec(
+                    select(LdxFile)
+                    .where(LdxFile.processed_at < detection_time)
+                    .order_by(LdxFile.processed_at.desc())
+                    .limit(1)
+                ).first()
+                if not last_run:
+                    print(
+                        f"Skipping {val.field_name}: lookback field with no previous run"
+                    )
+                    continue
+                # Find what the value was at the time of the last run
+                last_run_time = _ensure_utc(last_run.processed_at)
+                prev_audit = session.exec(
                     select(AuditLog)
                     .where(
                         AuditLog.form_name == val.form_name,
                         AuditLog.field_name == val.field_name,
+                        AuditLog.changed_at <= last_run_time,
                     )
                     .order_by(AuditLog.changed_at.desc())
-                ).all()
-                if len(prev_logs) >= 2:
-                    inject_value = prev_logs[1].new_value or ""
+                    .limit(1)
+                ).first()
+                if prev_audit:
+                    inject_value = prev_audit.new_value or ""
                 else:
                     print(
-                        f"Skipping {val.field_name}: lookback field with no previous value"
+                        f"Skipping {val.field_name}: no value existed at previous run"
                     )
                     continue
 

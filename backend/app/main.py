@@ -298,19 +298,34 @@ def get_form_values(role: str, current_user: User = Depends(get_current_user)) -
         ts_map = {v.field_name: v.updated_at.timestamp() for v in values}
 
         prev_map: Dict[str, Optional[str]] = {}
-        for field_name in lookback_fields:
-            logs = session.exec(
-                select(AuditLog)
-                .where(
-                    AuditLog.form_name == form.form_name,
-                    AuditLog.field_name == field_name,
-                )
-                .order_by(AuditLog.changed_at.desc())
-            ).all()
-            if len(logs) >= 2:
-                prev_map[field_name] = logs[1].new_value
-            else:
-                prev_map[field_name] = None
+        if lookback_fields:
+            # Find the most recent processed run
+            last_run = session.exec(
+                select(LdxFile)
+                .order_by(LdxFile.processed_at.desc())
+                .limit(1)
+            ).first()
+            last_run_time = last_run.processed_at if last_run else None
+            # SQLite drops tzinfo — treat as UTC
+            if last_run_time and last_run_time.tzinfo is None:
+                last_run_time = last_run_time.replace(tzinfo=timezone.utc)
+
+            for field_name in lookback_fields:
+                if not last_run_time:
+                    prev_map[field_name] = None
+                    continue
+                # Value at the time of the last run
+                prev_audit = session.exec(
+                    select(AuditLog)
+                    .where(
+                        AuditLog.form_name == form.form_name,
+                        AuditLog.field_name == field_name,
+                        AuditLog.changed_at <= last_run_time,
+                    )
+                    .order_by(AuditLog.changed_at.desc())
+                    .limit(1)
+                ).first()
+                prev_map[field_name] = prev_audit.new_value if prev_audit else None
 
         return FormValuesResponse(
             values=value_map,
