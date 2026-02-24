@@ -15,6 +15,8 @@ export type FormField = {
   unit?: string;
   inject?: string;
   tab?: string;
+  lookback?: boolean;
+  validity_window?: number;
 };
 
 export type FormSchema = {

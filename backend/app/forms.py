@@ -17,6 +17,8 @@ class FormField(BaseModel):
     unit: Optional[str] = None
     inject: Optional[str] = None
     tab: Optional[str] = None
+    lookback: bool = False
+    validity_window: Optional[int] = None
 
 
 class FormSchema(BaseModel):

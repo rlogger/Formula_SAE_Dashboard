@@ -17,10 +17,12 @@ import { Loader2, Save } from "lucide-react";
 type Props = {
   schema: FormSchema;
   values: Record<string, string | null>;
+  timestamps?: Record<string, number>;
+  previousValues?: Record<string, string | null>;
   onSubmit: (values: Record<string, string | null>) => Promise<void>;
 };
 
-export function FormRenderer({ schema, values, onSubmit }: Props) {
+export function FormRenderer({ schema, values, timestamps, previousValues, onSubmit }: Props) {
   const [draft, setDraft] = useState<Record<string, string | null>>(values);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -64,6 +66,18 @@ export function FormRenderer({ schema, values, onSubmit }: Props) {
     return { tabbedFields: tabbed, untabbedFields: untabbed };
   }, [schema, hasTabs]);
 
+  const renderField = (field: FormField) => (
+    <FormFieldComponent
+      key={field.name}
+      field={field}
+      value={draft[field.name] ?? ""}
+      onChange={(value) => updateField(field.name, value)}
+      timestamp={timestamps?.[field.name]}
+      previousValue={field.lookback ? previousValues?.[field.name] : undefined}
+      validityWindow={field.validity_window}
+    />
+  );
+
   return (
     <Card>
       <CardHeader>
@@ -86,35 +100,14 @@ export function FormRenderer({ schema, values, onSubmit }: Props) {
                 </TabsList>
                 {schema.tabs!.map((tab) => (
                   <TabsContent key={tab} value={tab} className="space-y-4 mt-4">
-                    {tabbedFields.get(tab)?.map((field) => (
-                      <FormFieldComponent
-                        key={field.name}
-                        field={field}
-                        value={draft[field.name] ?? ""}
-                        onChange={(value) => updateField(field.name, value)}
-                      />
-                    ))}
+                    {tabbedFields.get(tab)?.map(renderField)}
                   </TabsContent>
                 ))}
               </Tabs>
-              {untabbedFields.map((field) => (
-                <FormFieldComponent
-                  key={field.name}
-                  field={field}
-                  value={draft[field.name] ?? ""}
-                  onChange={(value) => updateField(field.name, value)}
-                />
-              ))}
+              {untabbedFields.map(renderField)}
             </>
           ) : (
-            schema.fields.map((field) => (
-              <FormFieldComponent
-                key={field.name}
-                field={field}
-                value={draft[field.name] ?? ""}
-                onChange={(value) => updateField(field.name, value)}
-              />
-            ))
+            schema.fields.map(renderField)
           )}
           <div className="flex items-center gap-3 pt-2">
             <Button type="submit" disabled={saving}>

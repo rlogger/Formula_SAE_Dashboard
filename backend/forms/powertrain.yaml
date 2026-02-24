@@ -5,10 +5,12 @@ fields:
     label: "Fuel Added"
     type: "number"
     unit: "lbs"
+    lookback: true
   - name: "sound"
     label: "Sound"
     type: "number"
     unit: "dBc"
+    validity_window: 60
   - name: "notes"
     label: "Notes"
     type: "textarea"
