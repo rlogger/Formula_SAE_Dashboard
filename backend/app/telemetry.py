@@ -14,24 +14,24 @@ from sqlmodel import Session, select
 
 from .auth import JWT_ALGORITHM, JWT_SECRET
 from .database import engine
-from .models import User
+from .models import TelemetrySensor, User
 
-CHANNELS = [
-    {"id": "speed", "name": "Vehicle Speed", "unit": "km/h", "min": 0, "max": 160, "group": "Performance"},
-    {"id": "rpm", "name": "Engine RPM", "unit": "rpm", "min": 0, "max": 14000, "group": "Performance"},
-    {"id": "throttle", "name": "Throttle Position", "unit": "%", "min": 0, "max": 100, "group": "Performance"},
-    {"id": "brake_pressure", "name": "Brake Pressure", "unit": "bar", "min": 0, "max": 120, "group": "Performance"},
-    {"id": "coolant_temp", "name": "Coolant Temp", "unit": "C", "min": 60, "max": 120, "group": "Temperatures"},
-    {"id": "oil_temp", "name": "Oil Temp", "unit": "C", "min": 60, "max": 140, "group": "Temperatures"},
-    {"id": "intake_temp", "name": "Intake Air Temp", "unit": "C", "min": 20, "max": 60, "group": "Temperatures"},
-    {"id": "exhaust_temp", "name": "Exhaust Temp", "unit": "C", "min": 200, "max": 900, "group": "Temperatures"},
-    {"id": "g_lateral", "name": "Lateral G-Force", "unit": "g", "min": -2.5, "max": 2.5, "group": "G-Forces"},
-    {"id": "g_longitudinal", "name": "Longitudinal G-Force", "unit": "g", "min": -3, "max": 3, "group": "G-Forces"},
-    {"id": "wheel_fl", "name": "Wheel Speed FL", "unit": "km/h", "min": 0, "max": 160, "group": "Wheel Speeds"},
-    {"id": "wheel_fr", "name": "Wheel Speed FR", "unit": "km/h", "min": 0, "max": 160, "group": "Wheel Speeds"},
-    {"id": "wheel_rl", "name": "Wheel Speed RL", "unit": "km/h", "min": 0, "max": 160, "group": "Wheel Speeds"},
-    {"id": "wheel_rr", "name": "Wheel Speed RR", "unit": "km/h", "min": 0, "max": 160, "group": "Wheel Speeds"},
-    {"id": "battery_voltage", "name": "Battery Voltage", "unit": "V", "min": 10, "max": 15, "group": "Electrical"},
+DEFAULT_CHANNELS = [
+    {"sensor_id": "speed", "name": "Vehicle Speed", "unit": "km/h", "min_value": 0, "max_value": 160, "group": "Performance", "sort_order": 0},
+    {"sensor_id": "rpm", "name": "Engine RPM", "unit": "rpm", "min_value": 0, "max_value": 14000, "group": "Performance", "sort_order": 1},
+    {"sensor_id": "throttle", "name": "Throttle Position", "unit": "%", "min_value": 0, "max_value": 100, "group": "Performance", "sort_order": 2},
+    {"sensor_id": "brake_pressure", "name": "Brake Pressure", "unit": "bar", "min_value": 0, "max_value": 120, "group": "Performance", "sort_order": 3},
+    {"sensor_id": "coolant_temp", "name": "Coolant Temp", "unit": "C", "min_value": 60, "max_value": 120, "group": "Temperatures", "sort_order": 4},
+    {"sensor_id": "oil_temp", "name": "Oil Temp", "unit": "C", "min_value": 60, "max_value": 140, "group": "Temperatures", "sort_order": 5},
+    {"sensor_id": "intake_temp", "name": "Intake Air Temp", "unit": "C", "min_value": 20, "max_value": 60, "group": "Temperatures", "sort_order": 6},
+    {"sensor_id": "exhaust_temp", "name": "Exhaust Temp", "unit": "C", "min_value": 200, "max_value": 900, "group": "Temperatures", "sort_order": 7},
+    {"sensor_id": "g_lateral", "name": "Lateral G-Force", "unit": "g", "min_value": -2.5, "max_value": 2.5, "group": "G-Forces", "sort_order": 8},
+    {"sensor_id": "g_longitudinal", "name": "Longitudinal G-Force", "unit": "g", "min_value": -3, "max_value": 3, "group": "G-Forces", "sort_order": 9},
+    {"sensor_id": "wheel_fl", "name": "Wheel Speed FL", "unit": "km/h", "min_value": 0, "max_value": 160, "group": "Wheel Speeds", "sort_order": 10},
+    {"sensor_id": "wheel_fr", "name": "Wheel Speed FR", "unit": "km/h", "min_value": 0, "max_value": 160, "group": "Wheel Speeds", "sort_order": 11},
+    {"sensor_id": "wheel_rl", "name": "Wheel Speed RL", "unit": "km/h", "min_value": 0, "max_value": 160, "group": "Wheel Speeds", "sort_order": 12},
+    {"sensor_id": "wheel_rr", "name": "Wheel Speed RR", "unit": "km/h", "min_value": 0, "max_value": 160, "group": "Wheel Speeds", "sort_order": 13},
+    {"sensor_id": "battery_voltage", "name": "Battery Voltage", "unit": "V", "min_value": 10, "max_value": 15, "group": "Electrical", "sort_order": 14},
 ]
 
 
@@ -44,8 +44,35 @@ class TelemetryChannelInfo(BaseModel):
     group: str
 
 
+def ensure_default_sensors(session: Session) -> None:
+    """Seed the TelemetrySensor table with defaults if empty."""
+    count = session.exec(select(TelemetrySensor)).first()
+    if count is not None:
+        return
+    for ch in DEFAULT_CHANNELS:
+        session.add(TelemetrySensor(**ch))
+    session.commit()
+
+
 def get_channels() -> List[TelemetryChannelInfo]:
-    return [TelemetryChannelInfo(**ch) for ch in CHANNELS]
+    """Return enabled sensors from the database, ordered by sort_order."""
+    with Session(engine) as session:
+        sensors = session.exec(
+            select(TelemetrySensor)
+            .where(TelemetrySensor.enabled == True)
+            .order_by(TelemetrySensor.sort_order)
+        ).all()
+        return [
+            TelemetryChannelInfo(
+                id=s.sensor_id,
+                name=s.name,
+                unit=s.unit,
+                min=s.min_value,
+                max=s.max_value,
+                group=s.group,
+            )
+            for s in sensors
+        ]
 
 
 def _authenticate_ws(token: str) -> bool:
@@ -66,7 +93,7 @@ def _authenticate_ws(token: str) -> bool:
         return False
 
 
-def _generate_frame(t: float) -> dict:
+def _generate_frame(t: float, unix_ts: float) -> dict:
     """Generate a single simulated telemetry frame."""
     # Simulate a car going around a track with varying speed
     phase = math.sin(t * 0.3) * 0.5 + 0.5  # 0-1 oscillating
@@ -74,7 +101,7 @@ def _generate_frame(t: float) -> dict:
     rpm_base = 3000 + phase * 9000
 
     return {
-        "timestamp": t,
+        "timestamp": unix_ts,
         "channels": {
             "speed": round(speed_base + random.gauss(0, 2), 1),
             "rpm": round(rpm_base + random.gauss(0, 200), 0),
@@ -105,8 +132,9 @@ async def telemetry_websocket(websocket: WebSocket, token: str) -> None:
     start = time.time()
     try:
         while True:
-            t = time.time() - start
-            frame = _generate_frame(t)
+            now = time.time()
+            t = now - start
+            frame = _generate_frame(t, now)
             await websocket.send_json(frame)
             await asyncio.sleep(0.1)  # 10Hz
     except WebSocketDisconnect:

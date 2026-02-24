@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import {
   LineChart,
   Line,
@@ -8,15 +9,39 @@ import {
   CartesianGrid,
   ResponsiveContainer,
   Tooltip,
+  Legend,
 } from "recharts";
 import { DataPoint } from "@/types/telemetry";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
+const SERIES_COLORS = [
+  "hsl(222, 47%, 40%)",
+  "hsl(142, 50%, 40%)",
+  "hsl(0, 60%, 50%)",
+  "hsl(38, 80%, 50%)",
+  "hsl(262, 50%, 50%)",
+  "hsl(190, 60%, 40%)",
+];
+
+function formatTime(unix: number): string {
+  const d = new Date(unix * 1000);
+  const m = d.getMinutes().toString().padStart(2, "0");
+  const s = d.getSeconds().toString().padStart(2, "0");
+  return `${m}:${s}`;
+}
+
+export type ChartSeries = {
+  channelId: string;
+  label: string;
+  color?: string;
+  data: DataPoint[];
+};
+
 type Props = {
   title: string;
   unit: string;
-  data: DataPoint[];
-  color?: string;
+  series: ChartSeries[];
+  timeWindow?: number;
   min?: number;
   max?: number;
 };
@@ -24,11 +49,39 @@ type Props = {
 export function LiveChart({
   title,
   unit,
-  data,
-  color = "hsl(222.2, 47.4%, 11.2%)",
+  series,
+  timeWindow = 20,
   min,
   max,
 }: Props) {
+  // Merge all series into a single array keyed by time
+  const { merged, domain } = useMemo(() => {
+    const timeMap = new Map<number, Record<string, number>>();
+    let latestTime = 0;
+
+    for (const s of series) {
+      for (const pt of s.data) {
+        if (pt.time > latestTime) latestTime = pt.time;
+        const existing = timeMap.get(pt.time) || { time: pt.time };
+        existing[s.channelId] = pt.value;
+        timeMap.set(pt.time, existing);
+      }
+    }
+
+    const merged = Array.from(timeMap.values()).sort(
+      (a, b) => (a.time as number) - (b.time as number)
+    );
+
+    const dom: [number, number] =
+      latestTime === 0
+        ? [0, timeWindow]
+        : [latestTime - timeWindow, latestTime];
+
+    return { merged, domain: dom };
+  }, [series, timeWindow]);
+
+  const isMulti = series.length > 1;
+
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -40,13 +93,15 @@ export function LiveChart({
       <CardContent>
         <div className="h-[200px]">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data}>
+            <LineChart data={merged}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
               <XAxis
                 dataKey="time"
-                tick={false}
-                axisLine={false}
-                tickLine={false}
+                type="number"
+                domain={domain}
+                tickFormatter={formatTime}
+                tick={{ fontSize: 10 }}
+                interval="preserveStartEnd"
               />
               <YAxis
                 domain={[min ?? "auto", max ?? "auto"]}
@@ -60,20 +115,24 @@ export function LiveChart({
                   borderRadius: "var(--radius)",
                   fontSize: 12,
                 }}
-                labelFormatter={() => ""}
-                formatter={(value: number | undefined) => [
-                  value !== undefined ? value.toFixed(2) : "--",
-                  title,
+                labelFormatter={(label) => formatTime(Number(label))}
+                formatter={(value) => [
+                  typeof value === "number" ? value.toFixed(2) : "--",
                 ]}
               />
-              <Line
-                type="monotone"
-                dataKey="value"
-                stroke={color}
-                strokeWidth={1.5}
-                dot={false}
-                isAnimationActive={false}
-              />
+              {isMulti && <Legend />}
+              {series.map((s, i) => (
+                <Line
+                  key={s.channelId}
+                  type="monotone"
+                  dataKey={s.channelId}
+                  name={s.label}
+                  stroke={s.color || SERIES_COLORS[i % SERIES_COLORS.length]}
+                  strokeWidth={1.5}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              ))}
             </LineChart>
           </ResponsiveContainer>
         </div>

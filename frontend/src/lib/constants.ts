@@ -22,5 +22,6 @@ export const ROUTES = {
   adminUsers: "/admin/users",
   adminAudit: "/admin/audit",
   adminLdx: "/admin/ldx",
+  adminSensors: "/admin/sensors",
   telemetry: "/telemetry",
 } as const;

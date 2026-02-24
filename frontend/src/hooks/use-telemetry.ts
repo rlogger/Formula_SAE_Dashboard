@@ -4,13 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { DataPoint } from "@/types/telemetry";
 import { useWebSocket } from "./use-websocket";
 
-const MAX_POINTS = 200;
-
-export function useTelemetry(channels: string[]) {
+export function useTelemetry(channels: string[], timeWindow: number = 20) {
+  const maxPoints = timeWindow * 10;
   const { latestFrame } = useWebSocket();
   const [data, setData] = useState<Record<string, DataPoint[]>>({});
   const channelsRef = useRef(channels);
   channelsRef.current = channels;
+  const maxPointsRef = useRef(maxPoints);
+  maxPointsRef.current = maxPoints;
 
   useEffect(() => {
     if (!latestFrame) return;
@@ -25,8 +26,8 @@ export function useTelemetry(channels: string[]) {
         };
         const existing = next[ch] || [];
         const updated = [...existing, point];
-        next[ch] = updated.length > MAX_POINTS
-          ? updated.slice(updated.length - MAX_POINTS)
+        next[ch] = updated.length > maxPointsRef.current
+          ? updated.slice(updated.length - maxPointsRef.current)
           : updated;
       }
       return next;

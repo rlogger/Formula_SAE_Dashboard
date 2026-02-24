@@ -11,6 +11,7 @@ import {
   FolderOpen,
   Activity,
   Shield,
+  Gauge,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
@@ -25,6 +26,7 @@ const navItems = [
 const adminItems = [
   { label: "Overview", href: "/admin", icon: LayoutDashboard },
   { label: "Users", href: "/admin/users", icon: Users },
+  { label: "Sensors", href: "/admin/sensors", icon: Gauge },
   { label: "Audit Log", href: "/admin/audit", icon: FileText },
   { label: "LDX Files", href: "/admin/ldx", icon: FolderOpen },
 ];

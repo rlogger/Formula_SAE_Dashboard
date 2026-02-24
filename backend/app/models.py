@@ -68,6 +68,24 @@ class AuditLog(SQLModel, table=True):
     changed_by: Optional[int] = Field(default=None, foreign_key="user.id")
 
 
+class TelemetrySensor(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    sensor_id: str = Field(index=True, unique=True)
+    name: str
+    unit: str
+    min_value: float = 0
+    max_value: float = 100
+    group: str = "Other"
+    sort_order: int = 0
+    enabled: bool = True
+
+
+class DashboardPreference(SQLModel, table=True):
+    user_id: int = Field(foreign_key="user.id", primary_key=True)
+    config: str
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+
 class LdxFile(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     path: str = Field(index=True, unique=True)
