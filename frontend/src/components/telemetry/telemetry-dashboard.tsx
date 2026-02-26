@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TelemetryChannel, ChartConfig, DashboardConfig } from "@/types/telemetry";
+import { CHART_COLORS } from "@/lib/constants";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { useTelemetry } from "@/hooks/use-telemetry";
 import { useDashboardPrefs } from "@/hooks/use-dashboard-prefs";
@@ -21,16 +22,14 @@ import { GaugeChart } from "./gauge-chart";
 import { NumericChart } from "./numeric-chart";
 import { AddChartDialog } from "./add-chart-dialog";
 import { TelemetryStats } from "./telemetry-stats";
-import { Play, Square, Plus, MoreVertical } from "lucide-react";
-
-const CHART_COLORS = [
-  "hsl(222, 47%, 40%)",
-  "hsl(142, 50%, 40%)",
-  "hsl(0, 60%, 50%)",
-  "hsl(38, 80%, 50%)",
-  "hsl(262, 50%, 50%)",
-  "hsl(190, 60%, 40%)",
-];
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Play, Square, Plus, MoreVertical, BarChart3 } from "lucide-react";
 
 type Props = {
   channels: TelemetryChannel[];
@@ -294,9 +293,12 @@ export function TelemetryDashboard({ channels }: Props) {
           })}
           {charts.length === 0 && (
             <Card>
-              <CardContent className="py-12 text-center text-muted-foreground">
-                No charts configured. Use &quot;Add Chart&quot; or toggle channels
-                from the sidebar.
+              <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                <BarChart3 className="h-12 w-12 text-muted-foreground/50 mb-4" />
+                <h3 className="text-lg font-medium">No charts configured</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Use &quot;Add Chart&quot; or toggle channels from the sidebar to get started.
+                </p>
               </CardContent>
             </Card>
           )}
@@ -336,48 +338,33 @@ function ChartControls({
   onChangeType: (id: string, type: ChartConfig["type"]) => void;
   onRemove: (id: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-
   return (
     <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-      <div className="relative">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 w-7 p-0"
-          onClick={() => setOpen(!open)}
-        >
-          <MoreVertical className="h-4 w-4" />
-        </Button>
-        {open && (
-          <div className="absolute right-0 top-8 z-50 min-w-[140px] rounded-md border bg-popover p-1 shadow-md">
-            {(["line", "gauge", "numeric"] as const).map((type) => (
-              <button
-                key={type}
-                className={`w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent ${
-                  chartType === type ? "font-semibold" : ""
-                }`}
-                onClick={() => {
-                  onChangeType(chartId, type);
-                  setOpen(false);
-                }}
-              >
-                {type === "line" ? "Line Chart" : type === "gauge" ? "Gauge" : "Numeric"}
-              </button>
-            ))}
-            <div className="my-1 h-px bg-muted" />
-            <button
-              className="w-full rounded-sm px-2 py-1.5 text-left text-sm text-destructive hover:bg-accent"
-              onClick={() => {
-                onRemove(chartId);
-                setOpen(false);
-              }}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+            <MoreVertical className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {(["line", "gauge", "numeric"] as const).map((type) => (
+            <DropdownMenuItem
+              key={type}
+              className={chartType === type ? "font-semibold" : ""}
+              onClick={() => onChangeType(chartId, type)}
             >
-              Remove
-            </button>
-          </div>
-        )}
-      </div>
+              {type === "line" ? "Line Chart" : type === "gauge" ? "Gauge" : "Numeric"}
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            onClick={() => onRemove(chartId)}
+          >
+            Remove
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

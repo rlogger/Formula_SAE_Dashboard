@@ -24,7 +24,7 @@ export default function FormsPage() {
     }
   }, [forms, activeRole]);
 
-  if (isLoading) return <LoadingSpinner />;
+  if (isLoading) return <LoadingSpinner label="Loading forms..." />;
 
   if (!forms || forms.length === 0) {
     return (

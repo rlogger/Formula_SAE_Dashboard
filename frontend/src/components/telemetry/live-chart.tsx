@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import React, { useMemo } from "react";
 import {
   LineChart,
   Line,
@@ -12,16 +12,8 @@ import {
   Legend,
 } from "recharts";
 import { DataPoint } from "@/types/telemetry";
+import { CHART_COLORS } from "@/lib/constants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-const SERIES_COLORS = [
-  "hsl(222, 47%, 40%)",
-  "hsl(142, 50%, 40%)",
-  "hsl(0, 60%, 50%)",
-  "hsl(38, 80%, 50%)",
-  "hsl(262, 50%, 50%)",
-  "hsl(190, 60%, 40%)",
-];
 
 function formatTime(unix: number): string {
   const d = new Date(unix * 1000);
@@ -46,7 +38,7 @@ type Props = {
   max?: number;
 };
 
-export function LiveChart({
+export const LiveChart = React.memo(function LiveChart({
   title,
   unit,
   series,
@@ -127,7 +119,7 @@ export function LiveChart({
                   type="monotone"
                   dataKey={s.channelId}
                   name={s.label}
-                  stroke={s.color || SERIES_COLORS[i % SERIES_COLORS.length]}
+                  stroke={s.color || CHART_COLORS[i % CHART_COLORS.length]}
                   strokeWidth={1.5}
                   dot={false}
                   isAnimationActive={false}
@@ -139,4 +131,4 @@ export function LiveChart({
       </CardContent>
     </Card>
   );
-}
+});

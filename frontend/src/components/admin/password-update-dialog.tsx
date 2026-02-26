@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
 import { User } from "@/types";
 import {
   Dialog,
@@ -33,9 +34,12 @@ export function PasswordUpdateDialog({ user, onClose, onSubmit }: Props) {
     try {
       await onSubmit(user.id, password);
       setPassword("");
+      toast.success("Password updated successfully");
       onClose();
     } catch (err) {
-      setError((err as Error).message);
+      const msg = (err as Error).message;
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }

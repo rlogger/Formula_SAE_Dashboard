@@ -14,7 +14,7 @@ export default function UsersPage() {
   const { data: users, isLoading, mutate: mutateUsers } = useUsers();
   const { data: roles } = useRoles();
 
-  if (isLoading) return <LoadingSpinner />;
+  if (isLoading) return <LoadingSpinner label="Loading users..." />;
 
   const handleDeleteUser = async (userId: number) => {
     if (!token) return;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import React, { useMemo } from "react";
 import { DataPoint } from "@/types/telemetry";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
@@ -13,7 +13,7 @@ type Props = {
   max?: number;
 };
 
-export function NumericChart({ title, unit, data, min, max }: Props) {
+export const NumericChart = React.memo(function NumericChart({ title, unit, data, min, max }: Props) {
   const { current, trend } = useMemo(() => {
     if (data.length === 0) return { current: null, trend: "flat" as const };
 
@@ -66,4 +66,4 @@ export function NumericChart({ title, unit, data, min, max }: Props) {
       </CardContent>
     </Card>
   );
-}
+});

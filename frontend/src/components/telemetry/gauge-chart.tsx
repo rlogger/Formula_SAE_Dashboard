@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import React, { useMemo } from "react";
 import {
   RadialBarChart,
   RadialBar,
@@ -18,7 +18,7 @@ type Props = {
   color?: string;
 };
 
-export function GaugeChart({
+export const GaugeChart = React.memo(function GaugeChart({
   title,
   unit,
   value,
@@ -82,4 +82,4 @@ export function GaugeChart({
       </CardContent>
     </Card>
   );
-}
+});

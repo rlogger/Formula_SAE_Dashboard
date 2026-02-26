@@ -6,6 +6,7 @@ import { AuthProvider } from "@/providers/auth-provider";
 import { SWRProvider } from "@/providers/swr-provider";
 import { WebSocketProvider } from "@/providers/websocket-provider";
 import { ErrorBoundary } from "@/components/shared/error-boundary";
+import { Toaster } from "@/components/ui/sonner";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -49,6 +50,7 @@ export default function RootLayout({
                 <WebSocketProvider>{children}</WebSocketProvider>
               </AuthProvider>
             </SWRProvider>
+            <Toaster />
           </ThemeProvider>
         </ErrorBoundary>
       </body>
