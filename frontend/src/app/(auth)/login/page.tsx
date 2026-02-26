@@ -92,7 +92,7 @@ export default function LoginPage() {
           )}
           <Button
             type="submit"
-            className="w-full bg-[hsl(var(--racing))] hover:bg-[hsl(var(--racing-hover))] text-white"
+            className="w-full bg-racing hover:bg-racing-hover text-white"
             disabled={loading}
           >
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

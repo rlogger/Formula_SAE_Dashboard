@@ -7,12 +7,16 @@ type WebSocketCallbacks = {
   onError?: (error: Event) => void;
 };
 
+const MAX_RECONNECT_DELAY = 30_000;
+const MAX_RECONNECT_ATTEMPTS = 20;
+
 export class TelemetryWebSocket {
   private ws: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private token: string;
   private callbacks: WebSocketCallbacks;
   private shouldReconnect = true;
+  private attempt = 0;
 
   constructor(token: string, callbacks: WebSocketCallbacks) {
     this.token = token;
@@ -34,6 +38,7 @@ export class TelemetryWebSocket {
     );
 
     this.ws.onopen = () => {
+      this.attempt = 0;
       this.callbacks.onOpen?.();
     };
 
@@ -48,8 +53,12 @@ export class TelemetryWebSocket {
 
     this.ws.onclose = () => {
       this.callbacks.onClose?.();
-      if (this.shouldReconnect) {
-        this.reconnectTimer = setTimeout(() => this.connect(), 2000);
+      if (this.shouldReconnect && this.attempt < MAX_RECONNECT_ATTEMPTS) {
+        const base = Math.min(1000 * Math.pow(2, this.attempt), MAX_RECONNECT_DELAY);
+        const jitter = base * 0.2 * Math.random();
+        const delay = base + jitter;
+        this.attempt++;
+        this.reconnectTimer = setTimeout(() => this.connect(), delay);
       }
     };
 
@@ -60,6 +69,7 @@ export class TelemetryWebSocket {
 
   disconnect(): void {
     this.shouldReconnect = false;
+    this.attempt = 0;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;

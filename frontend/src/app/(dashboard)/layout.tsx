@@ -36,7 +36,7 @@ export default function DashboardLayout({
       <Sidebar />
       <div className="flex flex-1 flex-col">
         <Header />
-        <main className="flex-1 p-4 lg:p-6">{children}</main>
+        <main className="flex-1 p-4 lg:p-6 animate-slide-in">{children}</main>
       </div>
     </div>
   );

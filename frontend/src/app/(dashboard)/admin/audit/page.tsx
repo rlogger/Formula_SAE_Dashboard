@@ -12,7 +12,7 @@ export default function AuditPage() {
   const [page, setPage] = useState(1);
   const { data, isLoading } = useAuditLog(page, PAGE_SIZE);
 
-  if (isLoading) return <LoadingSpinner />;
+  if (isLoading) return <LoadingSpinner label="Loading audit log..." />;
 
   const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / PAGE_SIZE));
 

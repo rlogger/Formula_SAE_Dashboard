@@ -18,7 +18,7 @@ export default function SensorsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editSensor, setEditSensor] = useState<TelemetrySensor | null>(null);
 
-  if (isLoading) return <LoadingSpinner />;
+  if (isLoading) return <LoadingSpinner label="Loading sensors..." />;
 
   const handleSubmit = async (
     data: {

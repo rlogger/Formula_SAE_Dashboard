@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -71,8 +72,11 @@ export function CreateUserForm({ roles, onSubmit }: Props) {
       setSelectedRoles([]);
       setIsAdmin(false);
       setSuccess("User created successfully.");
+      toast.success("User created successfully");
     } catch (err) {
-      setError((err as Error).message);
+      const msg = (err as Error).message;
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }

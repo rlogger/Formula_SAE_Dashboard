@@ -16,10 +16,18 @@ export function useTelemetry(channels: string[], timeWindow: number = 20) {
   useEffect(() => {
     if (!latestFrame) return;
     setData((prev) => {
-      const next = { ...prev };
+      let changed = false;
+      let next = prev;
+
       for (const ch of channelsRef.current) {
         const value = latestFrame.channels[ch];
         if (value === undefined) continue;
+
+        if (!changed) {
+          next = { ...prev };
+          changed = true;
+        }
+
         const point: DataPoint = {
           time: latestFrame.timestamp,
           value,
@@ -30,7 +38,8 @@ export function useTelemetry(channels: string[], timeWindow: number = 20) {
           ? updated.slice(updated.length - maxPointsRef.current)
           : updated;
       }
-      return next;
+
+      return changed ? next : prev;
     });
   }, [latestFrame]);
 

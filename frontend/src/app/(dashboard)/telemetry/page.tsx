@@ -20,7 +20,7 @@ export default function TelemetryPage() {
       .finally(() => setLoading(false));
   }, [token]);
 
-  if (loading) return <LoadingSpinner />;
+  if (loading) return <LoadingSpinner label="Loading channels..." />;
 
   return (
     <div className="space-y-6">

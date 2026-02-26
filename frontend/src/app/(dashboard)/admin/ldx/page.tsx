@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { useLdxFiles } from "@/hooks/use-ldx-files";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/api";
@@ -39,8 +40,10 @@ export default function LdxPage() {
         token
       );
       setMessage(`Exported: ${result.filename}`);
+      toast.success(`Exported: ${result.filename}`);
     } catch {
       setMessage("Export failed.");
+      toast.error("Export failed");
     }
   };
 
@@ -49,9 +52,11 @@ export default function LdxPage() {
     try {
       await apiFetch("/admin/clear-data", { method: "POST" }, token);
       setMessage("All data cleared.");
+      toast.success("All data cleared");
       mutateFiles();
     } catch {
       setMessage("Clear failed.");
+      toast.error("Clear failed");
     }
   };
 
@@ -65,13 +70,15 @@ export default function LdxPage() {
       );
       await apiFetch("/admin/clear-data", { method: "POST" }, token);
       setMessage(`Exported ${result.filename} and cleared all data.`);
+      toast.success(`Exported ${result.filename} and cleared all data`);
       mutateFiles();
     } catch {
       setMessage("Export & Clear failed.");
+      toast.error("Export & Clear failed");
     }
   };
 
-  if (isLoading) return <LoadingSpinner />;
+  if (isLoading) return <LoadingSpinner label="Loading LDX files..." />;
 
   return (
     <div className="space-y-6">

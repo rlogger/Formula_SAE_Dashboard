@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { FormField, FormSchema } from "@/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,30 +26,33 @@ type Props = {
 export function FormRenderer({ schema, values, timestamps, previousValues, onSubmit }: Props) {
   const [draft, setDraft] = useState<Record<string, string | null>>(values);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [saveResult, setSaveResult] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
     setDraft(values);
   }, [values]);
 
   useEffect(() => {
-    setMessage(null);
+    setSaveResult(null);
   }, [schema.role]);
 
   const updateField = (name: string, value: string) => {
     setDraft((prev) => ({ ...prev, [name]: value }));
-    setMessage(null);
+    setSaveResult(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    setMessage(null);
+    setSaveResult(null);
     try {
       await onSubmit(draft);
-      setMessage("Saved successfully");
+      setSaveResult({ type: "success", text: "Saved successfully" });
+      toast.success("Form saved successfully");
     } catch (err) {
-      setMessage((err as Error).message);
+      const msg = (err as Error).message;
+      setSaveResult({ type: "error", text: msg });
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
@@ -118,15 +122,15 @@ export function FormRenderer({ schema, values, timestamps, previousValues, onSub
               )}
               {saving ? "Saving..." : "Save"}
             </Button>
-            {message && (
+            {saveResult && (
               <p
                 className={`text-sm ${
-                  message.includes("success")
+                  saveResult.type === "success"
                     ? "text-green-600 dark:text-green-400"
                     : "text-destructive"
                 }`}
               >
-                {message}
+                {saveResult.text}
               </p>
             )}
           </div>

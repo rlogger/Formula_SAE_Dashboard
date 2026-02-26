@@ -77,3 +77,20 @@
 .animate-fade-in-up {
   animation: fade-in-up 0.5s ease-out;
 }
+
+/* Page transition animations */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
