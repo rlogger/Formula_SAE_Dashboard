@@ -1,10 +1,20 @@
-"""WebSocket telemetry endpoint with simulated vehicle data."""
+"""WebSocket telemetry endpoint with simulated and live serial data sources.
+
+Supports two data sources:
+  - "simulated": Generated test data (default when no serial port configured)
+  - "serial": Live data from Digi Bee SX modem (Motec CAN -> RS232 -> modem)
+
+The active source is determined by TELEMETRY_SOURCE env var ("auto", "serial",
+"simulated") and whether a serial port is configured and available.
+"""
 
 import asyncio
+import logging
 import math
+import os
 import random
 import time
-from typing import List
+from typing import Dict, List, Optional
 
 import jwt
 from fastapi import WebSocket, WebSocketDisconnect
@@ -15,6 +25,9 @@ from sqlmodel import Session, select
 from .auth import JWT_ALGORITHM, JWT_SECRET
 from .database import engine
 from .models import TelemetrySensor, User
+from .serial_telemetry import ModemState, SerialConfig, SerialTelemetryReader
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_CHANNELS = [
     {"sensor_id": "speed", "name": "Vehicle Speed", "unit": "km/h", "min_value": 0, "max_value": 160, "group": "Performance", "sort_order": 0},
@@ -95,13 +108,13 @@ def _authenticate_ws(token: str) -> bool:
 
 def _generate_frame(t: float, unix_ts: float) -> dict:
     """Generate a single simulated telemetry frame."""
-    # Simulate a car going around a track with varying speed
-    phase = math.sin(t * 0.3) * 0.5 + 0.5  # 0-1 oscillating
+    phase = math.sin(t * 0.3) * 0.5 + 0.5
     speed_base = 40 + phase * 100
     rpm_base = 3000 + phase * 9000
 
     return {
         "timestamp": unix_ts,
+        "source": "simulated",
         "channels": {
             "speed": round(speed_base + random.gauss(0, 2), 1),
             "rpm": round(rpm_base + random.gauss(0, 200), 0),
@@ -122,6 +135,78 @@ def _generate_frame(t: float, unix_ts: float) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# Telemetry source manager
+# ---------------------------------------------------------------------------
+
+class TelemetrySourceManager:
+    """Manages the active telemetry data source (simulated vs serial modem)."""
+
+    def __init__(self) -> None:
+        self._serial_config = SerialConfig.from_env()
+        self._serial_reader = SerialTelemetryReader(self._serial_config)
+        self._latest_serial_channels: Dict[str, float] = {}
+        self._serial_reader.set_on_frame(self._on_serial_frame)
+        self._source_preference = os.getenv("TELEMETRY_SOURCE", "auto")
+
+    def _on_serial_frame(self, channels: Dict[str, float]) -> None:
+        """Callback from serial reader when a new frame arrives."""
+        self._latest_serial_channels.update(channels)
+
+    @property
+    def active_source(self) -> str:
+        """Return the currently active data source name."""
+        if self._source_preference == "simulated":
+            return "simulated"
+        if self._source_preference == "serial":
+            return "serial"
+        # auto: use serial if connected, else simulated
+        if self._serial_reader.state == ModemState.CONNECTED:
+            return "serial"
+        return "simulated"
+
+    @property
+    def serial_reader(self) -> SerialTelemetryReader:
+        return self._serial_reader
+
+    async def start(self) -> None:
+        """Start the serial reader if configured."""
+        if self._source_preference != "simulated":
+            await self._serial_reader.start()
+
+    async def stop(self) -> None:
+        await self._serial_reader.stop()
+
+    def get_frame(self, t: float, unix_ts: float) -> dict:
+        """Get a telemetry frame from the active source."""
+        if self.active_source == "serial" and self._latest_serial_channels:
+            return {
+                "timestamp": unix_ts,
+                "source": "serial",
+                "channels": dict(self._latest_serial_channels),
+            }
+        return _generate_frame(t, unix_ts)
+
+    def status(self) -> dict:
+        return {
+            "active_source": self.active_source,
+            "source_preference": self._source_preference,
+            "serial": self._serial_reader.status(),
+        }
+
+    def update_serial_config(self, **kwargs: object) -> None:
+        self._serial_reader.update_config(**kwargs)
+
+    def set_source_preference(self, pref: str) -> None:
+        if pref not in ("auto", "serial", "simulated"):
+            raise ValueError(f"Invalid source preference: {pref}")
+        self._source_preference = pref
+
+
+# Module-level singleton
+source_manager = TelemetrySourceManager()
+
+
 async def telemetry_websocket(websocket: WebSocket, token: str) -> None:
     """Handle a WebSocket telemetry connection."""
     if not _authenticate_ws(token):
@@ -134,7 +219,7 @@ async def telemetry_websocket(websocket: WebSocket, token: str) -> None:
         while True:
             now = time.time()
             t = now - start
-            frame = _generate_frame(t, now)
+            frame = source_manager.get_frame(t, now)
             await websocket.send_json(frame)
             await asyncio.sleep(0.1)  # 10Hz
     except WebSocketDisconnect:

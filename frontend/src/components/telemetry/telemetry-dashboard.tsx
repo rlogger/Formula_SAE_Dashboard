@@ -36,7 +36,7 @@ type Props = {
 };
 
 export function TelemetryDashboard({ channels }: Props) {
-  const { connected, latestFrame, connect, disconnect } = useWebSocket();
+  const { connected, latestFrame, dataSource, connect, disconnect } = useWebSocket();
   const { config, isLoading: prefsLoading, savePrefs } = useDashboardPrefs();
 
   const [charts, setCharts] = useState<ChartConfig[]>(config.charts);
@@ -161,7 +161,7 @@ export function TelemetryDashboard({ channels }: Props) {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
-        <ConnectionStatus connected={connected} />
+        <ConnectionStatus connected={connected} dataSource={dataSource} />
         {!connected ? (
           <Button size="sm" onClick={connect}>
             <Play className="mr-2 h-3 w-3" />

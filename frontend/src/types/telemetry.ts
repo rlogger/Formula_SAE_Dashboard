@@ -21,7 +21,33 @@ export type TelemetrySensor = {
 
 export type TelemetryFrame = {
   timestamp: number;
+  source: "simulated" | "serial";
   channels: Record<string, number>;
+};
+
+export type SerialConfig = {
+  port: string;
+  baud_rate: number;
+  data_format: "csv" | "motec_binary" | "auto";
+  csv_channel_order: string[];
+  csv_separator: string;
+  timeout: number;
+  reconnect_interval: number;
+};
+
+export type TelemetrySourceStatus = {
+  active_source: "simulated" | "serial";
+  source_preference: string;
+  serial: {
+    state: "disconnected" | "connecting" | "connected" | "error";
+    port: string;
+    baud_rate: number;
+    format: string;
+    last_frame_time: number;
+    frames_received: number;
+    errors: number;
+    available: boolean;
+  };
 };
 
 export type DataPoint = {
