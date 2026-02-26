@@ -117,23 +117,33 @@ def parse_csv_line(
     return channels
 
 
-def parse_motec_binary_frame(data: bytes) -> Dict[str, float]:
-    """Parse a Motec binary CAN-over-serial frame.
+def parse_motec_binary_frames(
+    data: bytes,
+) -> tuple[Dict[str, float], bytes]:
+    """Parse Motec binary CAN-over-serial frames from a byte buffer.
 
     Expected frame format (from Motec CAN-to-Serial converter):
       [0x55] [0xAA] [CAN_ID_H] [CAN_ID_L] [LEN] [DATA...] [CHECKSUM]
+
+    Returns (parsed_channels, remaining_bytes) so callers can buffer leftovers.
     """
     channels: Dict[str, float] = {}
     pos = 0
-    while pos < len(data) - 5:
+    last_consumed = 0
+
+    while pos + 5 < len(data):
         # Find sync header
         if data[pos] != 0x55 or data[pos + 1] != 0xAA:
             pos += 1
+            last_consumed = pos
             continue
 
         can_id = struct.unpack(">H", data[pos + 2 : pos + 4])[0]
         data_len = data[pos + 4]
-        if pos + 5 + data_len + 1 > len(data):
+        frame_end = pos + 5 + data_len + 1
+
+        # Incomplete frame - keep remaining bytes for next read
+        if frame_end > len(data):
             break
 
         payload = data[pos + 5 : pos + 5 + data_len]
@@ -145,6 +155,7 @@ def parse_motec_binary_frame(data: bytes) -> Dict[str, float]:
             calc_checksum ^= b
         if calc_checksum != checksum:
             pos += 1
+            last_consumed = pos
             continue
 
         # Decode CAN payload using map
@@ -156,9 +167,11 @@ def parse_motec_binary_frame(data: bytes) -> Dict[str, float]:
                     raw = struct.unpack(">h", payload[byte_offset : byte_offset + 2])[0]
                     channels[sensor_id] = round(raw * scale + offset, 3)
 
-        pos += 5 + data_len + 1
+        pos = frame_end
+        last_consumed = pos
 
-    return channels
+    # Return remaining bytes that could be a partial frame
+    return channels, data[last_consumed:]
 
 
 class SerialTelemetryReader:
@@ -261,9 +274,17 @@ class SerialTelemetryReader:
             logger.error("Failed to open serial port %s: %s", self.config.port, e)
             return False
 
+    def _emit_frame(self, channels: Dict[str, float]) -> None:
+        """Record stats and invoke callback for a parsed frame."""
+        if channels:
+            self._last_frame_time = time.time()
+            self._frames_received += 1
+            if self._on_frame:
+                self._on_frame(channels)
+
     async def _read_loop(self) -> None:
         """Main loop: open serial, read frames, reconnect on failure."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         while self._running:
             if not self._serial or not self._serial.is_open:
                 if not self._open_serial():
@@ -271,12 +292,10 @@ class SerialTelemetryReader:
                     continue
 
             try:
-                if self.config.data_format == SerialFormat.CSV:
-                    await self._read_csv(loop)
-                elif self.config.data_format == SerialFormat.MOTEC_BINARY:
+                if self.config.data_format == SerialFormat.MOTEC_BINARY:
                     await self._read_binary(loop)
                 else:
-                    # Auto-detect: try reading a line and see if it looks like CSV
+                    # CSV and auto both read text lines
                     await self._read_csv(loop)
             except asyncio.CancelledError:
                 raise
@@ -290,7 +309,8 @@ class SerialTelemetryReader:
     async def _read_csv(self, loop: asyncio.AbstractEventLoop) -> None:
         """Read CSV text lines from serial."""
         while self._running and self._serial and self._serial.is_open:
-            raw_line = await loop.run_in_executor(None, self._serial.readline)
+            ser = self._serial  # local ref for executor safety
+            raw_line = await loop.run_in_executor(None, ser.readline)
             if not raw_line:
                 continue
             try:
@@ -304,28 +324,25 @@ class SerialTelemetryReader:
                 self.config.csv_channel_order,
                 self.config.csv_separator,
             )
-            if channels:
-                self._last_frame_time = time.time()
-                self._frames_received += 1
-                if self._on_frame:
-                    self._on_frame(channels)
+            self._emit_frame(channels)
 
     async def _read_binary(self, loop: asyncio.AbstractEventLoop) -> None:
-        """Read Motec binary frames from serial."""
+        """Read Motec binary frames from serial, buffering partial frames."""
+        buf = b""
         while self._running and self._serial and self._serial.is_open:
-            # Read available bytes
+            ser = self._serial  # local ref for executor safety
             raw = await loop.run_in_executor(
-                None, lambda: self._serial.read(self._serial.in_waiting or 256)
+                None, lambda s=ser: s.read(s.in_waiting or 256)
             )
             if not raw:
                 await asyncio.sleep(0.01)
                 continue
-            channels = parse_motec_binary_frame(raw)
-            if channels:
-                self._last_frame_time = time.time()
-                self._frames_received += 1
-                if self._on_frame:
-                    self._on_frame(channels)
+            buf += raw
+            channels, buf = parse_motec_binary_frames(buf)
+            self._emit_frame(channels)
+            # Prevent unbounded buffer growth from garbage data
+            if len(buf) > 4096:
+                buf = buf[-256:]
 
     def update_config(self, **kwargs: object) -> None:
         """Update configuration. Caller should stop/start to apply."""

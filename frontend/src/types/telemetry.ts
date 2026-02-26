@@ -21,7 +21,7 @@ export type TelemetrySensor = {
 
 export type TelemetryFrame = {
   timestamp: number;
-  source: "simulated" | "serial";
+  source?: "simulated" | "serial";
   channels: Record<string, number>;
 };
 

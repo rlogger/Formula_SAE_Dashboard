@@ -20,6 +20,13 @@ import { LoadingSpinner } from "@/components/shared/loading-spinner";
 import { toast } from "sonner";
 import { Radio, RefreshCw, Save } from "lucide-react";
 
+const STATE_COLORS: Record<string, string> = {
+  connected: "bg-green-600",
+  connecting: "bg-yellow-500",
+  disconnected: "bg-gray-400",
+  error: "bg-red-500",
+};
+
 export default function ModemPage() {
   const { token } = useAuth();
   const [status, setStatus] = useState<TelemetrySourceStatus | null>(null);
@@ -36,7 +43,7 @@ export default function ModemPage() {
       ]);
       setStatus(statusData);
       setConfig(configData);
-    } catch (err) {
+    } catch {
       toast.error("Failed to load modem status");
     } finally {
       setLoading(false);
@@ -109,13 +116,6 @@ export default function ModemPage() {
 
   if (loading) return <LoadingSpinner label="Loading modem configuration..." />;
 
-  const stateColors: Record<string, string> = {
-    connected: "bg-green-600",
-    connecting: "bg-yellow-500",
-    disconnected: "bg-gray-400",
-    error: "bg-red-500",
-  };
-
   return (
     <div className="space-y-6">
       <div>
@@ -158,7 +158,7 @@ export default function ModemPage() {
                 <p className="text-sm text-muted-foreground">Serial State</p>
                 <Badge
                   variant="secondary"
-                  className={`${stateColors[status.serial.state] || ""} text-white mt-1`}
+                  className={`${STATE_COLORS[status.serial.state] || ""} text-white mt-1`}
                 >
                   {status.serial.state}
                 </Badge>

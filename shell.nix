@@ -10,6 +10,7 @@ pkgs.mkShell {
     python3Packages.black
     python3Packages.isort
     python3Packages.debugpy
+    python3Packages.pyserial
 
     # Node.js (React frontend)
     nodejs_20
