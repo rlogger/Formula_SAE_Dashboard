@@ -28,7 +28,8 @@ from .models import (
     AuditLog, DashboardPreference, FormValue, InjectionLog, LdxFile,
     Role, SubteamRole, TelemetrySensor, User,
 )
-from .telemetry import TelemetryChannelInfo, ensure_default_sensors, get_channels, telemetry_websocket
+from .serial_telemetry import SerialFormat
+from .telemetry import TelemetryChannelInfo, ensure_default_sensors, get_channels, source_manager, telemetry_websocket
 
 watcher = LdxWatcher()
 
@@ -41,7 +42,9 @@ async def lifespan(app: FastAPI):
         ensure_default_admin(session)
         ensure_default_sensors(session)
     watcher.start()
+    await source_manager.start()
     yield
+    await source_manager.stop()
     watcher.stop()
 
 
@@ -742,3 +745,70 @@ def delete_sensor(
         session.delete(sensor)
         session.commit()
     return {"status": "deleted"}
+
+
+# --- Modem / Serial Telemetry ---
+
+
+class SerialConfigUpdate(BaseModel):
+    port: Optional[str] = None
+    baud_rate: Optional[int] = None
+    data_format: Optional[str] = None
+    csv_channel_order: Optional[List[str]] = None
+    csv_separator: Optional[str] = None
+    timeout: Optional[float] = None
+    reconnect_interval: Optional[float] = None
+
+
+class TelemetrySourceUpdate(BaseModel):
+    source: str  # "auto", "serial", "simulated"
+
+
+@app.get("/telemetry/source")
+def get_telemetry_source(
+    _: User = Depends(get_current_user),
+) -> Dict:
+    return source_manager.status()
+
+
+@app.get("/admin/serial/config")
+def get_serial_config(_: User = Depends(require_admin)) -> Dict:
+    return source_manager.serial_reader.config.to_dict()
+
+
+@app.put("/admin/serial/config")
+async def update_serial_config(
+    payload: SerialConfigUpdate, _: User = Depends(require_admin)
+) -> Dict[str, str]:
+    update_data = payload.model_dump(exclude_unset=True)
+    if "data_format" in update_data:
+        try:
+            SerialFormat(update_data["data_format"])
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid format. Must be one of: {', '.join(f.value for f in SerialFormat)}",
+            )
+    # Stop reader, apply config, restart
+    await source_manager.serial_reader.stop()
+    source_manager.update_serial_config(**update_data)
+    await source_manager.serial_reader.start()
+    return {"status": "updated"}
+
+
+@app.put("/admin/serial/source")
+def set_telemetry_source(
+    payload: TelemetrySourceUpdate, _: User = Depends(require_admin)
+) -> Dict[str, str]:
+    try:
+        source_manager.set_source_preference(payload.source)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"status": "updated", "active_source": source_manager.active_source}
+
+
+@app.post("/admin/serial/restart")
+async def restart_serial(_: User = Depends(require_admin)) -> Dict[str, str]:
+    await source_manager.serial_reader.stop()
+    await source_manager.serial_reader.start()
+    return {"status": "restarted", "state": source_manager.serial_reader.state.value}

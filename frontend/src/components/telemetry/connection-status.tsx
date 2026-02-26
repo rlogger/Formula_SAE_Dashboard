@@ -1,26 +1,36 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { Wifi, WifiOff } from "lucide-react";
+import { Radio, Wifi, WifiOff } from "lucide-react";
 
 type Props = {
   connected: boolean;
+  dataSource?: "simulated" | "serial" | null;
 };
 
-export function ConnectionStatus({ connected }: Props) {
+export function ConnectionStatus({ connected, dataSource }: Props) {
+  if (!connected) {
+    return (
+      <Badge variant="secondary" className="gap-1">
+        <WifiOff className="h-3 w-3" />
+        Disconnected
+      </Badge>
+    );
+  }
+
+  if (dataSource === "serial") {
+    return (
+      <Badge variant="default" className="gap-1 bg-green-600 hover:bg-green-700">
+        <Radio className="h-3 w-3" />
+        Live Modem
+      </Badge>
+    );
+  }
+
   return (
-    <Badge variant={connected ? "default" : "secondary"} className="gap-1">
-      {connected ? (
-        <>
-          <Wifi className="h-3 w-3" />
-          Connected
-        </>
-      ) : (
-        <>
-          <WifiOff className="h-3 w-3" />
-          Disconnected
-        </>
-      )}
+    <Badge variant="default" className="gap-1">
+      <Wifi className="h-3 w-3" />
+      Simulated
     </Badge>
   );
 }
