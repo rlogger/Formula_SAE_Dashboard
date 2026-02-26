@@ -36,8 +36,8 @@ export default function ModemPage() {
       ]);
       setStatus(statusData);
       setConfig(configData);
-    } catch (err) {
-      toast.error("Failed to load modem status");
+    } catch {
+      toast.error("Failed to load modem status. Please check your connection.");
     } finally {
       setLoading(false);
     }

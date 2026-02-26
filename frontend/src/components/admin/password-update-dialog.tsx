@@ -28,7 +28,27 @@ export function PasswordUpdateDialog({ user, onClose, onSubmit }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !password) return;
+    if (!user) return;
+    if (!password) {
+      setError("Password is required.");
+      return;
+    }
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+    if (password.length > 128) {
+      setError("Password must be at most 128 characters.");
+      return;
+    }
+    if (/^\d+$/.test(password)) {
+      setError("Password cannot be all numbers.");
+      return;
+    }
+    if (/^[a-zA-Z]+$/.test(password)) {
+      setError("Password must contain at least one number or special character.");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {

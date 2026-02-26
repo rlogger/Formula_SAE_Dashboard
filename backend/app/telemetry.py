@@ -209,22 +209,40 @@ source_manager = TelemetrySourceManager()
 
 async def telemetry_websocket(websocket: WebSocket, token: str) -> None:
     """Handle a WebSocket telemetry connection."""
+    if not token or not token.strip():
+        await websocket.close(code=4001, reason="Token is required")
+        return
+
     if not _authenticate_ws(token):
         await websocket.close(code=4001, reason="Unauthorized")
         return
 
     await websocket.accept()
     start = time.time()
+    consecutive_errors = 0
+    max_consecutive_errors = 10
     try:
         while True:
             now = time.time()
             t = now - start
-            frame = source_manager.get_frame(t, now)
-            await websocket.send_json(frame)
+            try:
+                frame = source_manager.get_frame(t, now)
+                await websocket.send_json(frame)
+                consecutive_errors = 0
+            except WebSocketDisconnect:
+                raise
+            except Exception as send_err:
+                consecutive_errors += 1
+                logger.warning("WebSocket send error (%d/%d): %s", consecutive_errors, max_consecutive_errors, send_err)
+                if consecutive_errors >= max_consecutive_errors:
+                    logger.error("Too many consecutive WebSocket errors, closing connection")
+                    break
             await asyncio.sleep(0.1)  # 10Hz
     except WebSocketDisconnect:
-        pass
-    except Exception:
+        logger.debug("WebSocket client disconnected")
+    except Exception as e:
+        logger.error("WebSocket connection error: %s", e)
+    finally:
         try:
             await websocket.close()
         except Exception:

@@ -4,10 +4,11 @@ import React, {
   createContext,
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { User } from "@/types";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
 import {
   getStoredToken,
   loginRequest,
@@ -19,6 +20,7 @@ type AuthContextType = {
   user: User | null;
   token: string | null;
   loading: boolean;
+  authError: string | null;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
 };
@@ -27,6 +29,7 @@ export const AuthContext = createContext<AuthContextType>({
   user: null,
   token: null,
   loading: true,
+  authError: null,
   login: async () => { },
   logout: () => { },
 });
@@ -36,15 +39,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user: null,
     token: null,
     loading: true,
+    authError: null,
   });
+  const logoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearLogoutTimer = useCallback(() => {
+    if (logoutTimerRef.current) {
+      clearTimeout(logoutTimerRef.current);
+      logoutTimerRef.current = null;
+    }
+  }, []);
+
+  const logout = useCallback(() => {
+    clearLogoutTimer();
+    removeStoredToken();
+    setState({ user: null, token: null, loading: false, authError: null });
+  }, [clearLogoutTimer]);
 
   const fetchUser = useCallback(async (t: string) => {
     try {
       const u = await apiFetch<User>("/auth/me", {}, t);
-      setState({ user: u, token: t, loading: false });
-    } catch {
+      setState({ user: u, token: t, loading: false, authError: null });
+    } catch (err) {
       removeStoredToken();
-      setState({ user: null, token: null, loading: false });
+      const isExpired = err instanceof ApiError && err.isUnauthorized;
+      setState({
+        user: null,
+        token: null,
+        loading: false,
+        authError: isExpired ? "Your session has expired. Please sign in again." : null,
+      });
     }
   }, []);
 
@@ -57,6 +81,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchUser]);
 
+  // Listen for storage changes (logout from another tab)
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "token" && !e.newValue) {
+        setState({ user: null, token: null, loading: false, authError: null });
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
+
   const login = useCallback(
     async (username: string, password: string) => {
       const newToken = await loginRequest(username, password);
@@ -65,11 +100,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     },
     [fetchUser]
   );
-
-  const logout = useCallback(() => {
-    removeStoredToken();
-    setState({ user: null, token: null, loading: false });
-  }, []);
 
   return (
     <AuthContext.Provider value={{ ...state, login, logout }}>
@@ -82,4 +112,5 @@ type AuthState = {
   user: User | null;
   token: string | null;
   loading: boolean;
+  authError: string | null;
 };
