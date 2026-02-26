@@ -18,7 +18,9 @@ venv/
 
 # Node
 frontend/node_modules/
+frontend/.next/
 frontend/dist/
+.next/
 .npm
 *.log
 
