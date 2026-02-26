@@ -19,6 +19,7 @@ type Props = {
   timestamp?: number;
   previousValue?: string | null;
   validityWindow?: number;
+  error?: string | null;
 };
 
 function fieldLabel(field: FormFieldType) {
@@ -68,9 +69,13 @@ function StalenessIndicator({ timestamp, validityWindow }: { timestamp: number; 
   );
 }
 
-export function FormFieldComponent({ field, value, onChange, timestamp, previousValue, validityWindow }: Props) {
+export function FormFieldComponent({ field, value, onChange, timestamp, previousValue, validityWindow, error }: Props) {
+  const hasError = !!error;
   const hints = (
     <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+      {hasError && (
+        <span className="text-xs text-destructive font-medium">{error}</span>
+      )}
       {timestamp != null && validityWindow != null && (
         <StalenessIndicator timestamp={timestamp} validityWindow={validityWindow} />
       )}
@@ -85,16 +90,24 @@ export function FormFieldComponent({ field, value, onChange, timestamp, previous
     </div>
   );
 
+  const errorClass = hasError ? "border-destructive focus-visible:ring-destructive" : "";
+
   if (field.type === "textarea") {
     return (
       <div className="space-y-1">
-        <Label htmlFor={field.name}>{fieldLabel(field)}</Label>
+        <Label htmlFor={field.name}>
+          {fieldLabel(field)}
+          {field.required && <span className="text-destructive ml-1">*</span>}
+        </Label>
         <Textarea
           id={field.name}
           rows={3}
           value={value}
           placeholder={fieldPlaceholder(field)}
           onChange={(e) => onChange(e.target.value)}
+          maxLength={10000}
+          className={errorClass}
+          aria-invalid={hasError}
         />
         {hints}
       </div>
@@ -104,9 +117,12 @@ export function FormFieldComponent({ field, value, onChange, timestamp, previous
   if (field.type === "select") {
     return (
       <div className="space-y-1">
-        <Label htmlFor={field.name}>{fieldLabel(field)}</Label>
+        <Label htmlFor={field.name}>
+          {fieldLabel(field)}
+          {field.required && <span className="text-destructive ml-1">*</span>}
+        </Label>
         <Select value={value || undefined} onValueChange={onChange}>
-          <SelectTrigger id={field.name}>
+          <SelectTrigger id={field.name} className={errorClass} aria-invalid={hasError}>
             <SelectValue placeholder="Select..." />
           </SelectTrigger>
           <SelectContent>
@@ -124,13 +140,19 @@ export function FormFieldComponent({ field, value, onChange, timestamp, previous
 
   return (
     <div className="space-y-1">
-      <Label htmlFor={field.name}>{fieldLabel(field)}</Label>
+      <Label htmlFor={field.name}>
+        {fieldLabel(field)}
+        {field.required && <span className="text-destructive ml-1">*</span>}
+      </Label>
       <Input
         id={field.name}
         type={field.type === "number" ? "number" : "text"}
         value={value}
         placeholder={fieldPlaceholder(field)}
         onChange={(e) => onChange(e.target.value)}
+        maxLength={field.type === "number" ? undefined : 10000}
+        className={errorClass}
+        aria-invalid={hasError}
       />
       {hints}
     </div>

@@ -1,14 +1,18 @@
+import json
+import logging
 import os
+import re
 import shutil
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlmodel import Session, col, delete, func, select
 
 from .auth import (
@@ -30,6 +34,19 @@ from .models import (
 )
 from .serial_telemetry import SerialFormat
 from .telemetry import TelemetryChannelInfo, ensure_default_sensors, get_channels, source_manager, telemetry_websocket
+
+logger = logging.getLogger(__name__)
+
+# --- Constants ---
+MAX_USERNAME_LENGTH = 64
+MAX_PASSWORD_LENGTH = 128
+MAX_FIELD_VALUE_LENGTH = 10_000
+MAX_SENSOR_ID_LENGTH = 64
+MAX_SENSOR_NAME_LENGTH = 128
+MAX_SENSOR_UNIT_LENGTH = 32
+MAX_SENSOR_GROUP_LENGTH = 64
+MAX_DASHBOARD_CONFIG_LENGTH = 100_000  # 100KB
+MAX_FORM_VALUES_PER_SUBMIT = 200
 
 watcher = LdxWatcher()
 
@@ -63,9 +80,24 @@ app.add_middleware(
 )
 
 
+# --- Global exception handler ---
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.error("Unhandled error on %s %s: %s", request.method, request.url.path, exc, exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An internal server error occurred. Please try again later."},
+    )
+
+
+# --- Pydantic schemas with validation ---
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+_USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9_.\-]+$")
 
 
 class UserCreate(BaseModel):
@@ -73,6 +105,32 @@ class UserCreate(BaseModel):
     password: str
     roles: List[str] = []
     is_admin: bool = False
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Username is required")
+        if len(v) > MAX_USERNAME_LENGTH:
+            raise ValueError(f"Username must be at most {MAX_USERNAME_LENGTH} characters")
+        if not _USERNAME_PATTERN.match(v):
+            raise ValueError("Username may only contain letters, numbers, underscores, dots, and hyphens")
+        return v
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_length(cls, v: str) -> str:
+        if len(v) > MAX_PASSWORD_LENGTH:
+            raise ValueError(f"Password must be at most {MAX_PASSWORD_LENGTH} characters")
+        return v
+
+    @field_validator("roles")
+    @classmethod
+    def validate_roles_count(cls, v: List[str]) -> List[str]:
+        if len(v) > 2:
+            raise ValueError("A user can have at most 2 roles")
+        return v
 
 
 class UserView(BaseModel):
@@ -85,9 +143,23 @@ class UserView(BaseModel):
 class PasswordUpdate(BaseModel):
     password: str
 
+    @field_validator("password")
+    @classmethod
+    def validate_password_length(cls, v: str) -> str:
+        if len(v) > MAX_PASSWORD_LENGTH:
+            raise ValueError(f"Password must be at most {MAX_PASSWORD_LENGTH} characters")
+        return v
+
 
 class RolesUpdate(BaseModel):
     roles: List[str]
+
+    @field_validator("roles")
+    @classmethod
+    def validate_roles_count(cls, v: List[str]) -> List[str]:
+        if len(v) > 2:
+            raise ValueError("A user can have at most 2 roles")
+        return v
 
 
 class FormValuesResponse(BaseModel):
@@ -98,6 +170,16 @@ class FormValuesResponse(BaseModel):
 
 class FormSubmit(BaseModel):
     values: Dict[str, Optional[str]]
+
+    @field_validator("values")
+    @classmethod
+    def validate_values(cls, v: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
+        if len(v) > MAX_FORM_VALUES_PER_SUBMIT:
+            raise ValueError(f"Too many fields submitted (max {MAX_FORM_VALUES_PER_SUBMIT})")
+        for key, val in v.items():
+            if val is not None and len(val) > MAX_FIELD_VALUE_LENGTH:
+                raise ValueError(f"Value for '{key}' exceeds maximum length of {MAX_FIELD_VALUE_LENGTH} characters")
+        return v
 
 
 class AuditLogView(BaseModel):
@@ -141,10 +223,17 @@ def _validate_roles(roles: List[str]) -> List[str]:
 
 
 def _validate_password(password: str) -> None:
+    if not password or not password.strip():
+        raise HTTPException(status_code=400, detail="Password is required")
     if len(password) < MIN_PASSWORD_LENGTH:
         raise HTTPException(
             status_code=400,
             detail=f"Password must be at least {MIN_PASSWORD_LENGTH} characters"
+        )
+    if len(password) > MAX_PASSWORD_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Password must be at most {MAX_PASSWORD_LENGTH} characters"
         )
     if password.isdigit():
         raise HTTPException(
@@ -155,6 +244,11 @@ def _validate_password(password: str) -> None:
         raise HTTPException(
             status_code=400,
             detail="Password must contain at least one number or special character"
+        )
+    if len(set(password)) < 3:
+        raise HTTPException(
+            status_code=400,
+            detail="Password must contain at least 3 distinct characters"
         )
 
 
@@ -167,8 +261,22 @@ def _ensure_access(role: str, user: User) -> None:
 
 @app.post("/auth/login", response_model=TokenResponse)
 def login(form_data: OAuth2PasswordRequestForm = Depends()) -> TokenResponse:
+    username = form_data.username.strip()
+    if not username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Username is required"
+        )
+    if not form_data.password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Password is required"
+        )
+    if len(username) > MAX_USERNAME_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Username must be at most {MAX_USERNAME_LENGTH} characters",
+        )
     with Session(engine) as session:
-        user = session.exec(select(User).where(User.username == form_data.username)).first()
+        user = session.exec(select(User).where(User.username == username)).first()
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Account not found"
@@ -200,11 +308,11 @@ def create_user(payload: UserCreate, _: User = Depends(require_admin)) -> UserVi
     if payload.is_admin and roles:
         raise HTTPException(status_code=400, detail="Admin cannot have subteam roles")
     if not payload.is_admin and not roles:
-        raise HTTPException(status_code=400, detail="At least one role is required")
+        raise HTTPException(status_code=400, detail="At least one role is required for non-admin users")
     with Session(engine) as session:
         existing = session.exec(select(User).where(User.username == payload.username)).first()
         if existing:
-            raise HTTPException(status_code=400, detail="Username already exists")
+            raise HTTPException(status_code=409, detail=f"Username '{payload.username}' already exists")
         user = User(
             username=payload.username,
             hashed_password=get_password_hash(payload.password),
@@ -212,19 +320,27 @@ def create_user(payload: UserCreate, _: User = Depends(require_admin)) -> UserVi
         )
         if roles:
             db_roles = session.exec(select(Role).where(Role.name.in_(roles))).all()
+            if len(db_roles) != len(roles):
+                found = {r.name for r in db_roles}
+                missing = [r for r in roles if r not in found]
+                raise HTTPException(status_code=400, detail=f"Unknown roles: {', '.join(missing)}")
             user.roles = db_roles
         session.add(user)
         session.commit()
         session.refresh(user)
+        logger.info("User created: %s (admin=%s)", payload.username, payload.is_admin)
         return _user_to_view(user)
 
 
 @app.delete("/admin/users/{user_id}")
-def delete_user(user_id: int, _: User = Depends(require_admin)) -> Dict[str, str]:
+def delete_user(user_id: int, current_admin: User = Depends(require_admin)) -> Dict[str, str]:
+    if user_id == current_admin.id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account")
     with Session(engine) as session:
         user = session.get(User, user_id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
+        logger.info("User deleted: %s (id=%d) by admin %s", user.username, user_id, current_admin.username)
         session.delete(user)
         session.commit()
     return {"status": "deleted"}
@@ -337,17 +453,56 @@ def get_form_values(role: str, current_user: User = Depends(get_current_user)) -
         )
 
 
+def _validate_field_value(field_schema: "FormField", value: Optional[str]) -> List[str]:
+    """Validate a single field value against its schema. Returns list of error messages."""
+    from .forms import FormField as FormFieldModel
+    errors: List[str] = []
+    if value is None or value == "":
+        if field_schema.required:
+            errors.append(f"'{field_schema.label}' is required")
+        return errors
+
+    if field_schema.type == "number":
+        try:
+            float(value)
+        except (ValueError, TypeError):
+            errors.append(f"'{field_schema.label}' must be a valid number")
+    elif field_schema.type == "select" and field_schema.options:
+        if value not in field_schema.options:
+            errors.append(f"'{field_schema.label}' must be one of: {', '.join(field_schema.options)}")
+    return errors
+
+
 @app.post("/forms/{role}/submit")
 def submit_form(role: str, payload: FormSubmit, current_user: User = Depends(get_current_user)) -> Dict[str, str]:
     _ensure_access(role, current_user)
     form = get_form_by_role(role)
     if not form:
         raise HTTPException(status_code=404, detail="Form not found")
-    field_names = {field.name for field in form.fields}
+
+    field_map = {field.name: field for field in form.fields}
+    validation_errors: List[str] = []
+
     for name in payload.values.keys():
-        if name not in field_names:
-            raise HTTPException(status_code=400, detail=f"Unknown field: {name}")
+        if name not in field_map:
+            raise HTTPException(status_code=400, detail=f"Unknown field: '{name}'")
+
+    # Validate all submitted values against their field schemas
+    for name, value in payload.values.items():
+        field_schema = field_map[name]
+        validation_errors.extend(_validate_field_value(field_schema, value))
+
+    # Check required fields that weren't submitted
+    for field in form.fields:
+        if field.required and field.name not in payload.values:
+            # Only warn if field has no existing value
+            pass  # Allow partial saves — don't block on missing fields
+
+    if validation_errors:
+        raise HTTPException(status_code=422, detail="; ".join(validation_errors))
+
     with Session(engine) as session:
+        now = datetime.now(timezone.utc)
         for field_name, new_value in payload.values.items():
             current = session.exec(
                 select(FormValue).where(
@@ -359,7 +514,7 @@ def submit_form(role: str, payload: FormSubmit, current_user: User = Depends(get
             old_value = current.value if current else None
             if current:
                 current.value = new_value_str
-                current.updated_at = datetime.now(timezone.utc)
+                current.updated_at = now
                 current.updated_by = current_user.id
             else:
                 session.add(
@@ -367,7 +522,7 @@ def submit_form(role: str, payload: FormSubmit, current_user: User = Depends(get
                         form_name=form.form_name,
                         field_name=field_name,
                         value=new_value_str,
-                        updated_at=datetime.now(timezone.utc),
+                        updated_at=now,
                         updated_by=current_user.id,
                     )
                 )
@@ -378,7 +533,7 @@ def submit_form(role: str, payload: FormSubmit, current_user: User = Depends(get
                         field_name=field_name,
                         old_value=old_value,
                         new_value=new_value_str,
-                        changed_at=datetime.now(timezone.utc),
+                        changed_at=now,
                         changed_by=current_user.id,
                     )
                 )
@@ -394,7 +549,7 @@ class PaginatedAuditLogResponse(BaseModel):
 @app.get("/admin/audit", response_model=PaginatedAuditLogResponse)
 def audit_log(
     offset: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=500),
+    limit: int = Query(20, ge=1, le=100),
     _: User = Depends(require_admin),
 ) -> PaginatedAuditLogResponse:
     with Session(engine) as session:
@@ -433,23 +588,32 @@ def get_watch_dir(_: User = Depends(require_admin)) -> Dict[str, Optional[str]]:
 def set_watch_dir(
     payload: Dict[str, str], _: User = Depends(require_admin)
 ) -> Dict[str, str]:
-    path = payload.get("path", "")
+    path = payload.get("path", "").strip()
     if not path:
         raise HTTPException(status_code=400, detail="Path is required")
+    if len(path) > 1024:
+        raise HTTPException(status_code=400, detail="Path is too long")
     # Resolve and validate path to prevent path traversal
     try:
         resolved = Path(path).expanduser().resolve()
     except (ValueError, OSError):
-        raise HTTPException(status_code=400, detail="Invalid path")
+        raise HTTPException(status_code=400, detail="Invalid path format")
     if not resolved.is_dir():
-        raise HTTPException(status_code=400, detail="Directory does not exist")
+        raise HTTPException(status_code=400, detail=f"Directory does not exist: {resolved}")
     # Prevent access to sensitive system directories
-    sensitive_paths = ["/etc", "/var", "/usr", "/bin", "/sbin", "/root", "/home"]
-    for sensitive in sensitive_paths:
-        if str(resolved).startswith(sensitive) and not str(resolved).startswith("/home"):
-            raise HTTPException(status_code=400, detail="Access to system directories is not allowed")
-    set_watch_directory(str(resolved))
-    return {"status": "updated", "path": str(resolved)}
+    resolved_str = str(resolved)
+    sensitive_prefixes = ["/etc", "/var/log", "/usr", "/bin", "/sbin", "/root", "/proc", "/sys", "/dev"]
+    for sensitive in sensitive_prefixes:
+        if resolved_str == sensitive or resolved_str.startswith(sensitive + "/"):
+            raise HTTPException(status_code=400, detail=f"Access to system directory '{sensitive}' is not allowed")
+    try:
+        # Verify we can actually read the directory
+        list(resolved.iterdir())
+    except PermissionError:
+        raise HTTPException(status_code=400, detail=f"Permission denied reading directory: {resolved}")
+    set_watch_directory(resolved_str)
+    logger.info("Watch directory updated to: %s", resolved_str)
+    return {"status": "updated", "path": resolved_str}
 
 
 @app.get("/admin/ldx-files", response_model=List[LdxFileInfo])
@@ -488,6 +652,11 @@ class InjectionLogView(BaseModel):
 def ldx_file_injections(
     file_name: str, _: User = Depends(require_admin)
 ) -> List[InjectionLogView]:
+    # Prevent path traversal in file_name
+    if "/" in file_name or "\\" in file_name or ".." in file_name:
+        raise HTTPException(status_code=400, detail="Invalid file name")
+    if not file_name.endswith(".ldx"):
+        raise HTTPException(status_code=400, detail="File must be an .ldx file")
     with Session(engine) as session:
         logs = session.exec(
             select(InjectionLog)
@@ -515,21 +684,16 @@ class LdxFileStatsView(BaseModel):
 @app.get("/admin/ldx-stats", response_model=List[LdxFileStatsView])
 def ldx_stats(_: User = Depends(require_admin)) -> List[LdxFileStatsView]:
     with Session(engine) as session:
-        rows = session.exec(
-            select(
-                InjectionLog.ldx_path,
-                func.count().label("total"),
-                func.sum(InjectionLog.was_update.cast(int)).label("updates"),
-            )
-            .group_by(InjectionLog.ldx_path)
-        ).all()
+        # Count updates per file path using a subquery approach for SQLite compatibility
+        all_logs = session.exec(select(InjectionLog)).all()
         stats: Dict[str, Dict[str, int]] = {}
-        for ldx_path, total, updates in rows:
-            name = Path(ldx_path).name
+        for log in all_logs:
+            name = Path(log.ldx_path).name
             if name not in stats:
                 stats[name] = {"total": 0, "updates": 0}
-            stats[name]["total"] += total
-            stats[name]["updates"] += updates or 0
+            stats[name]["total"] += 1
+            if log.was_update:
+                stats[name]["updates"] += 1
         return [
             LdxFileStatsView(
                 file_name=name,
@@ -542,17 +706,25 @@ def ldx_stats(_: User = Depends(require_admin)) -> List[LdxFileStatsView]:
 
 
 @app.post("/admin/export-db")
-def export_db(_: User = Depends(require_admin)) -> Dict[str, str]:
+def export_db(admin: User = Depends(require_admin)) -> Dict[str, str]:
     watch_dir = get_watch_directory()
     if not watch_dir or not Path(watch_dir).is_dir():
         raise HTTPException(
             status_code=400, detail="Watch directory not configured or does not exist"
         )
+    src = DATA_DIR / "app.db"
+    if not src.exists():
+        raise HTTPException(status_code=500, detail="Database file not found")
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S")
     filename = f"export_{timestamp}.db"
-    src = DATA_DIR / "app.db"
     dst = Path(watch_dir) / filename
-    shutil.copy2(str(src), str(dst))
+    try:
+        shutil.copy2(str(src), str(dst))
+    except PermissionError:
+        raise HTTPException(status_code=500, detail="Permission denied writing to watch directory")
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to export database: {e}")
+    logger.info("Database exported to %s by %s", dst, admin.username)
     return {"status": "exported", "filename": filename}
 
 
@@ -587,6 +759,19 @@ async def ws_telemetry(websocket: WebSocket, token: str = Query(...)) -> None:
 class DashboardConfigPayload(BaseModel):
     config: str  # JSON string
 
+    @field_validator("config")
+    @classmethod
+    def validate_config(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Config is required")
+        if len(v) > MAX_DASHBOARD_CONFIG_LENGTH:
+            raise ValueError(f"Config exceeds maximum size of {MAX_DASHBOARD_CONFIG_LENGTH // 1000}KB")
+        try:
+            json.loads(v)
+        except (json.JSONDecodeError, TypeError):
+            raise ValueError("Config must be valid JSON")
+        return v
+
 
 @app.get("/telemetry/preferences")
 def get_preferences(
@@ -619,6 +804,9 @@ def save_preferences(
 
 # --- Admin Sensor CRUD ---
 
+_SENSOR_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_]+$")
+
+
 class SensorCreate(BaseModel):
     sensor_id: str
     name: str
@@ -629,6 +817,63 @@ class SensorCreate(BaseModel):
     sort_order: int = 0
     enabled: bool = True
 
+    @field_validator("sensor_id")
+    @classmethod
+    def validate_sensor_id(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Sensor ID is required")
+        if len(v) > MAX_SENSOR_ID_LENGTH:
+            raise ValueError(f"Sensor ID must be at most {MAX_SENSOR_ID_LENGTH} characters")
+        if not _SENSOR_ID_PATTERN.match(v):
+            raise ValueError("Sensor ID may only contain letters, numbers, and underscores")
+        return v
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Name is required")
+        if len(v) > MAX_SENSOR_NAME_LENGTH:
+            raise ValueError(f"Name must be at most {MAX_SENSOR_NAME_LENGTH} characters")
+        return v
+
+    @field_validator("unit")
+    @classmethod
+    def validate_unit(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Unit is required")
+        if len(v) > MAX_SENSOR_UNIT_LENGTH:
+            raise ValueError(f"Unit must be at most {MAX_SENSOR_UNIT_LENGTH} characters")
+        return v
+
+    @field_validator("group")
+    @classmethod
+    def validate_group(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) > MAX_SENSOR_GROUP_LENGTH:
+            raise ValueError(f"Group must be at most {MAX_SENSOR_GROUP_LENGTH} characters")
+        return v or "Other"
+
+    @field_validator("max_value")
+    @classmethod
+    def validate_max_gt_min(cls, v: float, info: object) -> float:
+        # Access min_value from validated data
+        data = getattr(info, "data", {})
+        min_val = data.get("min_value")
+        if min_val is not None and v <= min_val:
+            raise ValueError("Max value must be greater than min value")
+        return v
+
+    @field_validator("sort_order")
+    @classmethod
+    def validate_sort_order(cls, v: int) -> int:
+        if v < -1000 or v > 10000:
+            raise ValueError("Sort order must be between -1000 and 10000")
+        return v
+
 
 class SensorUpdate(BaseModel):
     name: Optional[str] = None
@@ -638,6 +883,42 @@ class SensorUpdate(BaseModel):
     group: Optional[str] = None
     sort_order: Optional[int] = None
     enabled: Optional[bool] = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            v = v.strip()
+            if not v:
+                raise ValueError("Name cannot be empty")
+            if len(v) > MAX_SENSOR_NAME_LENGTH:
+                raise ValueError(f"Name must be at most {MAX_SENSOR_NAME_LENGTH} characters")
+        return v
+
+    @field_validator("unit")
+    @classmethod
+    def validate_unit(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            v = v.strip()
+            if not v:
+                raise ValueError("Unit cannot be empty")
+            if len(v) > MAX_SENSOR_UNIT_LENGTH:
+                raise ValueError(f"Unit must be at most {MAX_SENSOR_UNIT_LENGTH} characters")
+        return v
+
+    @field_validator("group")
+    @classmethod
+    def validate_group(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and len(v) > MAX_SENSOR_GROUP_LENGTH:
+            raise ValueError(f"Group must be at most {MAX_SENSOR_GROUP_LENGTH} characters")
+        return v
+
+    @field_validator("sort_order")
+    @classmethod
+    def validate_sort_order(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and (v < -1000 or v > 10000):
+            raise ValueError("Sort order must be between -1000 and 10000")
+        return v
 
 
 class SensorView(BaseModel):
@@ -712,10 +993,13 @@ def update_sensor(
             select(TelemetrySensor).where(TelemetrySensor.sensor_id == sensor_id)
         ).first()
         if not sensor:
-            raise HTTPException(status_code=404, detail="Sensor not found")
+            raise HTTPException(status_code=404, detail=f"Sensor '{sensor_id}' not found")
         update_data = payload.model_dump(exclude_unset=True)
         for key, value in update_data.items():
             setattr(sensor, key, value)
+        # Validate min < max after applying updates
+        if sensor.min_value >= sensor.max_value:
+            raise HTTPException(status_code=400, detail="Max value must be greater than min value")
         session.add(sensor)
         session.commit()
         session.refresh(sensor)
@@ -759,9 +1043,55 @@ class SerialConfigUpdate(BaseModel):
     timeout: Optional[float] = None
     reconnect_interval: Optional[float] = None
 
+    @field_validator("port")
+    @classmethod
+    def validate_port(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            v = v.strip()
+            if len(v) > 256:
+                raise ValueError("Port path is too long")
+        return v
+
+    @field_validator("baud_rate")
+    @classmethod
+    def validate_baud_rate(cls, v: Optional[int]) -> Optional[int]:
+        valid_bauds = {1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800}
+        if v is not None and v not in valid_bauds:
+            raise ValueError(f"Baud rate must be one of: {', '.join(str(b) for b in sorted(valid_bauds))}")
+        return v
+
+    @field_validator("timeout")
+    @classmethod
+    def validate_timeout(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and (v < 0.1 or v > 60):
+            raise ValueError("Timeout must be between 0.1 and 60 seconds")
+        return v
+
+    @field_validator("reconnect_interval")
+    @classmethod
+    def validate_reconnect(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and (v < 1 or v > 300):
+            raise ValueError("Reconnect interval must be between 1 and 300 seconds")
+        return v
+
+    @field_validator("csv_separator")
+    @classmethod
+    def validate_separator(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and len(v) > 5:
+            raise ValueError("CSV separator is too long")
+        return v
+
 
 class TelemetrySourceUpdate(BaseModel):
     source: str  # "auto", "serial", "simulated"
+
+    @field_validator("source")
+    @classmethod
+    def validate_source(cls, v: str) -> str:
+        valid = {"auto", "serial", "simulated"}
+        if v not in valid:
+            raise ValueError(f"Source must be one of: {', '.join(sorted(valid))}")
+        return v
 
 
 @app.get("/telemetry/source")

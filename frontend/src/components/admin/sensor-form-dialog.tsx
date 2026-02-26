@@ -70,11 +70,39 @@ export function SensorFormDialog({ open, sensor, onClose, onSubmit }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.sensor_id || !form.name || !form.unit) return;
+    const trimmedId = form.sensor_id.trim();
+    const trimmedName = form.name.trim();
+    const trimmedUnit = form.unit.trim();
+
+    if (!trimmedId) {
+      setError("Sensor ID is required.");
+      return;
+    }
+    if (!/^[a-zA-Z0-9_]+$/.test(trimmedId)) {
+      setError("Sensor ID may only contain letters, numbers, and underscores.");
+      return;
+    }
+    if (!trimmedName) {
+      setError("Display name is required.");
+      return;
+    }
+    if (!trimmedUnit) {
+      setError("Unit is required.");
+      return;
+    }
+    if (form.min_value >= form.max_value) {
+      setError("Max value must be greater than min value.");
+      return;
+    }
+    if (form.sort_order < -1000 || form.sort_order > 10000) {
+      setError("Sort order must be between -1000 and 10000.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
-      await onSubmit(form, isEdit);
+      await onSubmit({ ...form, sensor_id: trimmedId, name: trimmedName, unit: trimmedUnit }, isEdit);
       onClose();
     } catch (err) {
       setError((err as Error).message);

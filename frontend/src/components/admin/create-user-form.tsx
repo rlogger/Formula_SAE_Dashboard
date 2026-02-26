@@ -51,8 +51,37 @@ export function CreateUserForm({ roles, onSubmit }: Props) {
     e.preventDefault();
     setError(null);
     setSuccess(null);
-    if (!username || !password) {
-      setError("Username and password are required.");
+    const trimmedUsername = username.trim();
+    if (!trimmedUsername) {
+      setError("Username is required.");
+      return;
+    }
+    if (trimmedUsername.length > 64) {
+      setError("Username must be at most 64 characters.");
+      return;
+    }
+    if (!/^[a-zA-Z0-9_.\-]+$/.test(trimmedUsername)) {
+      setError("Username may only contain letters, numbers, underscores, dots, and hyphens.");
+      return;
+    }
+    if (!password) {
+      setError("Password is required.");
+      return;
+    }
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+    if (password.length > 128) {
+      setError("Password must be at most 128 characters.");
+      return;
+    }
+    if (/^\d+$/.test(password)) {
+      setError("Password cannot be all numbers.");
+      return;
+    }
+    if (/^[a-zA-Z]+$/.test(password)) {
+      setError("Password must contain at least one number or special character.");
       return;
     }
     if (!isAdmin && (selectedRoles.length < 1 || selectedRoles.length > 2)) {

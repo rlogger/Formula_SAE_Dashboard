@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Loader2 } from "lucide-react";
@@ -22,19 +22,33 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, authError } = useAuth();
   const router = useRouter();
+
+  // Show session expiry message from auth provider
+  useEffect(() => {
+    if (authError) setError(authError);
+  }, [authError]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username.trim() || !password.trim()) {
-      setError("Please enter both username and password");
+    const trimmedUsername = username.trim();
+    if (!trimmedUsername) {
+      setError("Please enter your username.");
+      return;
+    }
+    if (!password) {
+      setError("Please enter your password.");
+      return;
+    }
+    if (trimmedUsername.length > 64) {
+      setError("Username is too long.");
       return;
     }
     setError(null);
     setLoading(true);
     try {
-      await login(username, password);
+      await login(trimmedUsername, password);
       router.push("/forms");
     } catch (err) {
       const msg = (err as Error).message;
@@ -42,6 +56,8 @@ export default function LoginPage() {
         setError("This account does not exist. Please check your username.");
       } else if (msg.includes("Incorrect password")) {
         setError("Incorrect password. Please try again.");
+      } else if (msg.includes("timed out") || msg.includes("network") || msg.includes("Unable to connect")) {
+        setError("Unable to reach the server. Please check your connection and try again.");
       } else {
         setError(msg || "An unexpected error occurred. Please try again.");
       }
