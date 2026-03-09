@@ -26,6 +26,7 @@ from .auth import JWT_ALGORITHM, JWT_SECRET
 from .database import engine
 from .models import TelemetrySensor, User
 from .serial_telemetry import ModemState, SerialConfig, SerialTelemetryReader
+from .udp_telemetry import UdpBroadcastConfig, UdpBroadcastReceiver, UdpListenerState
 
 logger = logging.getLogger(__name__)
 
@@ -140,18 +141,30 @@ def _generate_frame(t: float, unix_ts: float) -> dict:
 # ---------------------------------------------------------------------------
 
 class TelemetrySourceManager:
-    """Manages the active telemetry data source (simulated vs serial modem)."""
+    """Manages the active telemetry data source (simulated, serial modem, or UDP broadcast)."""
+
+    VALID_SOURCES = ("auto", "serial", "simulated", "udp_broadcast")
 
     def __init__(self) -> None:
         self._serial_config = SerialConfig.from_env()
         self._serial_reader = SerialTelemetryReader(self._serial_config)
         self._latest_serial_channels: Dict[str, float] = {}
         self._serial_reader.set_on_frame(self._on_serial_frame)
+
+        self._udp_config = UdpBroadcastConfig.from_env()
+        self._udp_receiver = UdpBroadcastReceiver(self._udp_config)
+        self._latest_udp_channels: Dict[str, float] = {}
+        self._udp_receiver.set_on_frame(self._on_udp_frame)
+
         self._source_preference = os.getenv("TELEMETRY_SOURCE", "auto")
 
     def _on_serial_frame(self, channels: Dict[str, float]) -> None:
         """Callback from serial reader when a new frame arrives."""
         self._latest_serial_channels.update(channels)
+
+    def _on_udp_frame(self, channels: Dict[str, float]) -> None:
+        """Callback from UDP receiver when a parsed frame arrives."""
+        self._latest_udp_channels.update(channels)
 
     @property
     def active_source(self) -> str:
@@ -160,30 +173,49 @@ class TelemetrySourceManager:
             return "simulated"
         if self._source_preference == "serial":
             return "serial"
-        # auto: use serial if connected, else simulated
+        if self._source_preference == "udp_broadcast":
+            return "udp_broadcast"
+        # auto: prefer serial if connected, then UDP if receiving, else simulated
         if self._serial_reader.state == ModemState.CONNECTED:
             return "serial"
+        if self._udp_receiver.state == UdpListenerState.RECEIVING:
+            return "udp_broadcast"
         return "simulated"
 
     @property
     def serial_reader(self) -> SerialTelemetryReader:
         return self._serial_reader
 
+    @property
+    def udp_receiver(self) -> UdpBroadcastReceiver:
+        return self._udp_receiver
+
     async def start(self) -> None:
-        """Start the serial reader if configured."""
+        """Start configured data sources."""
         if self._source_preference != "simulated":
             await self._serial_reader.start()
+            await self._udp_receiver.start()
 
     async def stop(self) -> None:
         await self._serial_reader.stop()
+        await self._udp_receiver.stop()
+        self._latest_serial_channels.clear()
+        self._latest_udp_channels.clear()
 
     def get_frame(self, t: float, unix_ts: float) -> dict:
         """Get a telemetry frame from the active source."""
-        if self.active_source == "serial" and self._latest_serial_channels:
+        source = self.active_source
+        if source == "serial" and self._latest_serial_channels:
             return {
                 "timestamp": unix_ts,
                 "source": "serial",
                 "channels": dict(self._latest_serial_channels),
+            }
+        if source == "udp_broadcast" and self._latest_udp_channels:
+            return {
+                "timestamp": unix_ts,
+                "source": "udp_broadcast",
+                "channels": dict(self._latest_udp_channels),
             }
         return _generate_frame(t, unix_ts)
 
@@ -192,13 +224,17 @@ class TelemetrySourceManager:
             "active_source": self.active_source,
             "source_preference": self._source_preference,
             "serial": self._serial_reader.status(),
+            "udp": self._udp_receiver.status(),
         }
 
     def update_serial_config(self, **kwargs: object) -> None:
         self._serial_reader.update_config(**kwargs)
 
+    def update_udp_config(self, **kwargs: object) -> None:
+        self._udp_receiver.update_config(**kwargs)
+
     def set_source_preference(self, pref: str) -> None:
-        if pref not in ("auto", "serial", "simulated"):
+        if pref not in self.VALID_SOURCES:
             raise ValueError(f"Invalid source preference: {pref}")
         self._source_preference = pref
 
@@ -209,7 +245,7 @@ source_manager = TelemetrySourceManager()
 
 async def telemetry_websocket(websocket: WebSocket, token: str) -> None:
     """Handle a WebSocket telemetry connection."""
-    if not token or not token.strip():
+    if not token or not token.strip() or len(token) > 4096:
         await websocket.close(code=4001, reason="Token is required")
         return
 

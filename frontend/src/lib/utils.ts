@@ -8,6 +8,7 @@ export function cn(...inputs: ClassValue[]) {
 export function formatLocalTime(value: string): string {
   const hasZone = /Z|[+-]\d{2}:\d{2}$/.test(value);
   const parsed = new Date(hasZone ? value : `${value}Z`);
+  if (isNaN(parsed.getTime())) return value;
   return parsed.toLocaleString();
 }
 

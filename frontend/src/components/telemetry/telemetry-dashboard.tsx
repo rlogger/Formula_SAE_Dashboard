@@ -39,26 +39,29 @@ export function TelemetryDashboard({ channels }: Props) {
   const { connected, connectionState, latestFrame, dataSource, reconnectAttempt, connect, disconnect } = useWebSocket();
   const { config, isLoading: prefsLoading, savePrefs } = useDashboardPrefs();
 
-  const [charts, setCharts] = useState<ChartConfig[]>(config.charts);
-  const [timeWindow, setTimeWindow] = useState(config.timeWindow);
+  const [charts, setCharts] = useState<ChartConfig[]>(Array.isArray(config.charts) ? config.charts : []);
+  const [timeWindow, setTimeWindow] = useState(config.timeWindow ?? 20);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
 
   // Sync from loaded prefs
   useEffect(() => {
     if (!prefsLoading) {
-      setCharts(config.charts);
-      setTimeWindow(config.timeWindow);
+      setCharts(Array.isArray(config.charts) ? config.charts : []);
+      setTimeWindow(config.timeWindow ?? 20);
     }
   }, [config, prefsLoading]);
 
-  // Collect all unique channel IDs that are needed
-  const allChannelIds = useMemo(() => {
+  const enabledChannels = useMemo(() => {
     const set = new Set<string>();
     for (const chart of charts) {
-      for (const ch of chart.channels) set.add(ch);
+      for (const ch of chart.channels) {
+        if (ch) set.add(ch);
+      }
     }
-    return Array.from(set);
+    return set;
   }, [charts]);
+
+  const allChannelIds = useMemo(() => Array.from(enabledChannels), [enabledChannels]);
 
   const { data, clear } = useTelemetry(allChannelIds, timeWindow);
 
@@ -66,15 +69,6 @@ export function TelemetryDashboard({ channels }: Props) {
     () => new Map(channels.map((c) => [c.id, c])),
     [channels]
   );
-
-  // Quick toggle adds/removes single-channel line chart
-  const enabledChannels = useMemo(() => {
-    const set = new Set<string>();
-    for (const chart of charts) {
-      for (const ch of chart.channels) set.add(ch);
-    }
-    return set;
-  }, [charts]);
 
   const persistConfig = useCallback(
     (newCharts: ChartConfig[], newWindow?: number) => {
@@ -133,8 +127,7 @@ export function TelemetryDashboard({ channels }: Props) {
     (chartId: string, newType: ChartConfig["type"]) => {
       setCharts((prev) => {
         const next = prev.map((c) => {
-          if (c.id !== chartId) return c;
-          // Gauge/numeric only support single channel
+          if (c.id !== chartId || !c.channels.length) return c;
           const chs = newType !== "line" ? [c.channels[0]] : c.channels;
           return { ...c, type: newType, channels: chs };
         });
@@ -147,7 +140,7 @@ export function TelemetryDashboard({ channels }: Props) {
 
   const handleTimeWindowChange = useCallback(
     (value: string) => {
-      const tw = parseInt(value);
+      const tw = parseInt(value) || 20;
       setTimeWindow(tw);
       persistConfig(charts, tw);
     },

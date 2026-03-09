@@ -1,14 +1,14 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Radio, Wifi, WifiOff, XCircle } from "lucide-react";
+import { Loader2, Radio, RadioTower, Wifi, WifiOff, XCircle } from "lucide-react";
 
 type ConnectionState = "disconnected" | "connected" | "reconnecting" | "failed";
 
 type Props = {
   connected: boolean;
   connectionState?: ConnectionState;
-  dataSource?: "simulated" | "serial" | null;
+  dataSource?: "simulated" | "serial" | "udp_broadcast" | null;
   reconnectAttempt?: number;
 };
 
@@ -45,6 +45,15 @@ export function ConnectionStatus({ connected, connectionState, dataSource, recon
       <Badge variant="default" className="gap-1 bg-green-600 hover:bg-green-700">
         <Radio className="h-3 w-3" />
         Live Modem
+      </Badge>
+    );
+  }
+
+  if (dataSource === "udp_broadcast") {
+    return (
+      <Badge variant="default" className="gap-1 bg-blue-600 hover:bg-blue-700">
+        <RadioTower className="h-3 w-3" />
+        WiFi Broadcast
       </Badge>
     );
   }

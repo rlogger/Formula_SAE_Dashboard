@@ -58,13 +58,29 @@ class SerialConfig:
             if csv_order_env
             else None
         )
+        try:
+            baud = int(os.getenv("SERIAL_BAUD", "9600"))
+        except (ValueError, TypeError):
+            baud = 9600
+        try:
+            fmt = SerialFormat(os.getenv("SERIAL_FORMAT", "csv"))
+        except ValueError:
+            fmt = SerialFormat.CSV
+        try:
+            timeout = float(os.getenv("SERIAL_TIMEOUT", "2.0"))
+        except (ValueError, TypeError):
+            timeout = 2.0
+        try:
+            reconnect = float(os.getenv("SERIAL_RECONNECT", "5.0"))
+        except (ValueError, TypeError):
+            reconnect = 5.0
         config = cls(
             port=os.getenv("SERIAL_PORT", ""),
-            baud_rate=int(os.getenv("SERIAL_BAUD", "9600")),
-            data_format=SerialFormat(os.getenv("SERIAL_FORMAT", "csv")),
+            baud_rate=baud,
+            data_format=fmt,
             csv_separator=os.getenv("SERIAL_CSV_SEPARATOR", ","),
-            timeout=float(os.getenv("SERIAL_TIMEOUT", "2.0")),
-            reconnect_interval=float(os.getenv("SERIAL_RECONNECT", "5.0")),
+            timeout=timeout,
+            reconnect_interval=reconnect,
         )
         if csv_channels:
             config.csv_channel_order = csv_channels
@@ -263,7 +279,7 @@ class SerialTelemetryReader:
 
     async def _read_loop(self) -> None:
         """Main loop: open serial, read frames, reconnect on failure."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         while self._running:
             if not self._serial or not self._serial.is_open:
                 if not self._open_serial():
@@ -313,9 +329,11 @@ class SerialTelemetryReader:
     async def _read_binary(self, loop: asyncio.AbstractEventLoop) -> None:
         """Read Motec binary frames from serial."""
         while self._running and self._serial and self._serial.is_open:
-            # Read available bytes
+            serial = self._serial
+            if serial is None or not serial.is_open:
+                break
             raw = await loop.run_in_executor(
-                None, lambda: self._serial.read(self._serial.in_waiting or 256)
+                None, lambda s=serial: s.read(s.in_waiting or 256)
             )
             if not raw:
                 await asyncio.sleep(0.01)

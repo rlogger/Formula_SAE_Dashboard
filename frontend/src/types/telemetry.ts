@@ -21,7 +21,7 @@ export type TelemetrySensor = {
 
 export type TelemetryFrame = {
   timestamp: number;
-  source: "simulated" | "serial";
+  source: "simulated" | "serial" | "udp_broadcast";
   channels: Record<string, number>;
 };
 
@@ -35,8 +35,42 @@ export type SerialConfig = {
   reconnect_interval: number;
 };
 
+export type UdpBroadcastConfig = {
+  port: number;
+  bind_address: string;
+  packet_format: "csv" | "json" | "raw" | "auto";
+  csv_channel_order: string[];
+  csv_separator: string;
+  capture_enabled: boolean;
+};
+
+export type UdpStatus = {
+  state: "stopped" | "listening" | "receiving" | "error";
+  port: number;
+  bind_address: string;
+  packet_format: string;
+  last_frame_time: number;
+  frames_received: number;
+  packets_received: number;
+  errors: number;
+  available: boolean;
+  capture_enabled: boolean;
+  capture_count: number;
+};
+
+export type CapturedPacket = {
+  timestamp: number;
+  source: string;
+  size: number;
+  hex: string;
+  ascii: string;
+  parsed_ok: boolean;
+  channels: Record<string, number>;
+  error: string;
+};
+
 export type TelemetrySourceStatus = {
-  active_source: "simulated" | "serial";
+  active_source: "simulated" | "serial" | "udp_broadcast";
   source_preference: string;
   serial: {
     state: "disconnected" | "connecting" | "connected" | "error";
@@ -48,6 +82,7 @@ export type TelemetrySourceStatus = {
     errors: number;
     available: boolean;
   };
+  udp: UdpStatus;
 };
 
 export type DataPoint = {

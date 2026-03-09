@@ -9,7 +9,8 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 DB_PATH = os.getenv("DATABASE_URL", f"sqlite:///{DATA_DIR / 'app.db'}")
 
-engine = create_engine(DB_PATH, connect_args={"check_same_thread": False})
+_connect_args = {"check_same_thread": False} if DB_PATH.startswith("sqlite") else {}
+engine = create_engine(DB_PATH, connect_args=_connect_args)
 
 
 def init_db() -> None:

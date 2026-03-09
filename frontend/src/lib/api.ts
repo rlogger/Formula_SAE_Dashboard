@@ -12,26 +12,6 @@ export class ApiError extends Error {
     this.status = status;
     this.statusText = statusText;
   }
-
-  get isUnauthorized(): boolean {
-    return this.status === 401;
-  }
-
-  get isForbidden(): boolean {
-    return this.status === 403;
-  }
-
-  get isNotFound(): boolean {
-    return this.status === 404;
-  }
-
-  get isValidationError(): boolean {
-    return this.status === 422 || this.status === 400;
-  }
-
-  get isServerError(): boolean {
-    return this.status >= 500;
-  }
 }
 
 export async function apiFetch<T>(
@@ -80,8 +60,9 @@ export async function apiFetch<T>(
       const text = await response.text();
       try {
         const data = JSON.parse(text);
-        if (data.detail) errorMsg = data.detail;
-        else if (data.message) errorMsg = data.message;
+        if (typeof data.detail === "string") errorMsg = data.detail;
+        else if (Array.isArray(data.detail)) errorMsg = data.detail.map((d: { msg?: string }) => d.msg || String(d)).join("; ");
+        else if (typeof data.message === "string") errorMsg = data.message;
       } catch {
         if (text) errorMsg = text;
       }
@@ -90,8 +71,12 @@ export async function apiFetch<T>(
     }
 
     const text = await response.text();
-    if (!text) return {} as T;
-    return JSON.parse(text) as T;
+    if (!text) return undefined as T;
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      throw new ApiError("Invalid response from server", response.status, "ParseError");
+    }
   } catch (err) {
     if (err instanceof ApiError) throw err;
     if (err instanceof DOMException && err.name === "AbortError") {

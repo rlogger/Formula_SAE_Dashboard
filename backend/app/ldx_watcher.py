@@ -1,37 +1,19 @@
 import asyncio
+import logging
 import os
-import traceback
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 from xml.etree import ElementTree
+
+logger = logging.getLogger(__name__)
 
 from sqlmodel import Session, select
 
 from .database import engine
 from .forms import FormField, load_forms
 from .models import AuditLog, FormValue, InjectionLog, LdxFile, Setting, User
-
-
-def _indent_xml(elem, level=0):
-    """Add indentation to XML elements for readability."""
-    indent = "\n" + " " * (level * 2)
-    if len(elem):
-        if not elem.text or not elem.text.strip():
-            elem.text = indent + " "
-        if not elem.tail or not elem.tail.strip():
-            elem.tail = indent
-        last_child = None
-        for child in elem:
-            _indent_xml(child, level + 1)
-            last_child = child
-        if last_child is not None and (
-            not last_child.tail or not last_child.tail.strip()
-        ):
-            last_child.tail = indent
-    else:
-        if level and (not elem.tail or not elem.tail.strip()):
-            elem.tail = indent
 
 
 class LdxWatcher:
@@ -54,9 +36,7 @@ class LdxWatcher:
             try:
                 await self._scan_once()
             except Exception as e:
-                # Log errors but keep the watcher alive
-                print(f"Error in LDX watcher scan: {e}")
-                traceback.print_exc()
+                logger.error("Error in LDX watcher scan: %s", e, exc_info=True)
             await asyncio.sleep(self.interval_seconds)
 
     async def _scan_once(self) -> None:
@@ -114,9 +94,7 @@ class LdxWatcher:
                 )
                 session.commit()
         except Exception as e:
-            # Log the error but don't crash the watcher
-            print(f"Error processing LDX file {path}: {e}")
-            traceback.print_exc()
+            logger.error("Error processing LDX file %s: %s", path, e, exc_info=True)
 
 
 def get_watch_directory() -> Optional[str]:
@@ -176,7 +154,7 @@ def inject_values_into_ldx(
     # Get all form values (we'll filter to latest per field)
     all_values = session.exec(select(FormValue)).all()
 
-    print(f"Injecting values into {path.name}: found {len(all_values)} form values")
+    logger.info("Injecting values into %s: found %d form values", path.name, len(all_values))
 
     # Get the latest value for each unique (form_name, field_name) pair
     latest_values: Dict[str, FormValue] = {}
@@ -186,10 +164,10 @@ def inject_values_into_ldx(
         if not current or value.updated_at > current.updated_at:
             latest_values[key] = value
 
-    print(f"Latest values to inject: {len(latest_values)} unique fields")
+    logger.info("Latest values to inject: %d unique fields", len(latest_values))
 
     if not latest_values:
-        print(f"No form values found to inject into {path.name}")
+        logger.info("No form values found to inject into %s", path.name)
         return
 
     # Build lookups
@@ -260,9 +238,9 @@ def inject_values_into_ldx(
             if schema_field and schema_field.validity_window is not None:
                 age = (detection_time - _ensure_utc(val.updated_at)).total_seconds()
                 if age > schema_field.validity_window:
-                    print(
-                        f"Skipping {val.field_name}: value is {age:.0f}s old "
-                        f"(window: {schema_field.validity_window}s)"
+                    logger.debug(
+                        "Skipping %s: value is %.0fs old (window: %ds)",
+                        val.field_name, age, schema_field.validity_window,
                     )
                     continue
 
@@ -277,9 +255,7 @@ def inject_values_into_ldx(
                     .limit(1)
                 ).first()
                 if not last_run:
-                    print(
-                        f"Skipping {val.field_name}: lookback field with no previous run"
-                    )
+                    logger.debug("Skipping %s: lookback field with no previous run", val.field_name)
                     continue
                 # Find what the value was at the time of the last run
                 last_run_time = _ensure_utc(last_run.processed_at)
@@ -296,9 +272,7 @@ def inject_values_into_ldx(
                 if prev_audit:
                     inject_value = prev_audit.new_value or ""
                 else:
-                    print(
-                        f"Skipping {val.field_name}: no value existed at previous run"
-                    )
+                    logger.debug("Skipping %s: no value existed at previous run", val.field_name)
                     continue
 
             # Determine the final ID/Name
@@ -389,10 +363,17 @@ def inject_values_into_ldx(
                 )
             )
 
-    # Format XML with proper indentation
-    try:
-        ElementTree.indent(root, space=" ", level=0)
-    except AttributeError:
-        _indent_xml(root)
+    ElementTree.indent(root, space=" ", level=0)
 
-    tree.write(path, encoding="utf-8", xml_declaration=True)
+    dir_path = path.parent
+    fd, tmp_path = tempfile.mkstemp(dir=str(dir_path), suffix=".tmp")
+    try:
+        os.close(fd)
+        tree.write(tmp_path, encoding="utf-8", xml_declaration=True)
+        os.replace(tmp_path, str(path))
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise

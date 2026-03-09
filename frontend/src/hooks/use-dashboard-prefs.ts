@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import useSWR from "swr";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "./use-auth";
@@ -24,9 +24,11 @@ export function useDashboardPrefs() {
     token ? ["/telemetry/preferences", token] : null,
     async ([path, t]: [string, string]) => {
       const res = await apiFetch<{ config: string | null }>(path, {}, t);
-      if (res.config) {
+      if (res?.config) {
         try {
-          return JSON.parse(res.config) as DashboardConfig;
+          const parsed = JSON.parse(res.config) as DashboardConfig;
+          if (!parsed || !Array.isArray(parsed.charts)) return DEFAULT_CONFIG;
+          return { ...DEFAULT_CONFIG, ...parsed, charts: parsed.charts };
         } catch {
           return DEFAULT_CONFIG;
         }
@@ -49,6 +51,12 @@ export function useDashboardPrefs() {
     },
     [token, mutate]
   );
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   return {
     config: data ?? DEFAULT_CONFIG,

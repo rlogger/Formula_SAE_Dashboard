@@ -23,7 +23,10 @@ export async function loginRequest(
     }
     throw new Error(errorMsg);
   }
-  const data = (await response.json()) as { access_token: string };
+  const data = (await response.json()) as { access_token?: string };
+  if (!data.access_token) {
+    throw new Error("Invalid response from server");
+  }
   return data.access_token;
 }
 

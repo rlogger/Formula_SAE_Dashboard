@@ -51,7 +51,12 @@ def load_forms() -> List[FormSchema]:
     for path in sorted(FORMS_DIR.glob("*")):
         if path.suffix not in {".yaml", ".yml", ".json"}:
             continue
-        data = _load_file(path)
+        try:
+            data = _load_file(path)
+        except Exception as exc:
+            raise ValueError(f"Failed to read form file {path.name}: {exc}") from exc
+        if not data or not isinstance(data, dict):
+            continue
         try:
             forms.append(FormSchema.model_validate(data))
         except ValidationError as exc:

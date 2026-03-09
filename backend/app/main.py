@@ -34,6 +34,7 @@ from .models import (
 )
 from .serial_telemetry import SerialFormat
 from .telemetry import TelemetryChannelInfo, ensure_default_sensors, get_channels, source_manager, telemetry_websocket
+from .udp_telemetry import UdpPacketFormat
 
 logger = logging.getLogger(__name__)
 
@@ -125,13 +126,6 @@ class UserCreate(BaseModel):
             raise ValueError(f"Password must be at most {MAX_PASSWORD_LENGTH} characters")
         return v
 
-    @field_validator("roles")
-    @classmethod
-    def validate_roles_count(cls, v: List[str]) -> List[str]:
-        if len(v) > 2:
-            raise ValueError("A user can have at most 2 roles")
-        return v
-
 
 class UserView(BaseModel):
     id: int
@@ -153,13 +147,6 @@ class PasswordUpdate(BaseModel):
 
 class RolesUpdate(BaseModel):
     roles: List[str]
-
-    @field_validator("roles")
-    @classmethod
-    def validate_roles_count(cls, v: List[str]) -> List[str]:
-        if len(v) > 2:
-            raise ValueError("A user can have at most 2 roles")
-        return v
 
 
 class FormValuesResponse(BaseModel):
@@ -234,21 +221,6 @@ def _validate_password(password: str) -> None:
         raise HTTPException(
             status_code=400,
             detail=f"Password must be at most {MAX_PASSWORD_LENGTH} characters"
-        )
-    if password.isdigit():
-        raise HTTPException(
-            status_code=400,
-            detail="Password cannot be all numbers"
-        )
-    if password.isalpha():
-        raise HTTPException(
-            status_code=400,
-            detail="Password must contain at least one number or special character"
-        )
-    if len(set(password)) < 3:
-        raise HTTPException(
-            status_code=400,
-            detail="Password must contain at least 3 distinct characters"
         )
 
 
@@ -455,7 +427,6 @@ def get_form_values(role: str, current_user: User = Depends(get_current_user)) -
 
 def _validate_field_value(field_schema: "FormField", value: Optional[str]) -> List[str]:
     """Validate a single field value against its schema. Returns list of error messages."""
-    from .forms import FormField as FormFieldModel
     errors: List[str] = []
     if value is None or value == "":
         if field_schema.required:
@@ -491,12 +462,6 @@ def submit_form(role: str, payload: FormSubmit, current_user: User = Depends(get
     for name, value in payload.values.items():
         field_schema = field_map[name]
         validation_errors.extend(_validate_field_value(field_schema, value))
-
-    # Check required fields that weren't submitted
-    for field in form.fields:
-        if field.required and field.name not in payload.values:
-            # Only warn if field has no existing value
-            pass  # Allow partial saves — don't block on missing fields
 
     if validation_errors:
         raise HTTPException(status_code=422, detail="; ".join(validation_errors))
@@ -684,16 +649,21 @@ class LdxFileStatsView(BaseModel):
 @app.get("/admin/ldx-stats", response_model=List[LdxFileStatsView])
 def ldx_stats(_: User = Depends(require_admin)) -> List[LdxFileStatsView]:
     with Session(engine) as session:
-        # Count updates per file path using a subquery approach for SQLite compatibility
-        all_logs = session.exec(select(InjectionLog)).all()
+        from sqlalchemy import case, cast, String as SAString
+        rows = session.exec(
+            select(
+                InjectionLog.ldx_path,
+                func.count().label("total"),
+                func.sum(case((InjectionLog.was_update == True, 1), else_=0)).label("updates"),
+            ).group_by(InjectionLog.ldx_path)
+        ).all()
         stats: Dict[str, Dict[str, int]] = {}
-        for log in all_logs:
-            name = Path(log.ldx_path).name
+        for ldx_path, total, updates in rows:
+            name = Path(ldx_path).name
             if name not in stats:
                 stats[name] = {"total": 0, "updates": 0}
-            stats[name]["total"] += 1
-            if log.was_update:
-                stats[name]["updates"] += 1
+            stats[name]["total"] += total
+            stats[name]["updates"] += (updates or 0)
         return [
             LdxFileStatsView(
                 file_name=name,
@@ -1083,12 +1053,12 @@ class SerialConfigUpdate(BaseModel):
 
 
 class TelemetrySourceUpdate(BaseModel):
-    source: str  # "auto", "serial", "simulated"
+    source: str  # "auto", "serial", "simulated", "udp_broadcast"
 
     @field_validator("source")
     @classmethod
     def validate_source(cls, v: str) -> str:
-        valid = {"auto", "serial", "simulated"}
+        valid = {"auto", "serial", "simulated", "udp_broadcast"}
         if v not in valid:
             raise ValueError(f"Source must be one of: {', '.join(sorted(valid))}")
         return v
@@ -1142,3 +1112,82 @@ async def restart_serial(_: User = Depends(require_admin)) -> Dict[str, str]:
     await source_manager.serial_reader.stop()
     await source_manager.serial_reader.start()
     return {"status": "restarted", "state": source_manager.serial_reader.state.value}
+
+
+# --- UDP Broadcast Telemetry ---
+
+class UdpConfigUpdate(BaseModel):
+    port: Optional[int] = None
+    bind_address: Optional[str] = None
+    packet_format: Optional[str] = None
+    csv_channel_order: Optional[List[str]] = None
+    csv_separator: Optional[str] = None
+    capture_enabled: Optional[bool] = None
+
+    @field_validator("port")
+    @classmethod
+    def validate_port(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and (v < 1024 or v > 65535):
+            raise ValueError("Port must be between 1024 and 65535")
+        return v
+
+    @field_validator("bind_address")
+    @classmethod
+    def validate_bind(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            v = v.strip()
+            if len(v) > 256:
+                raise ValueError("Bind address is too long")
+        return v
+
+    @field_validator("csv_separator")
+    @classmethod
+    def validate_separator(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and len(v) > 5:
+            raise ValueError("CSV separator is too long")
+        return v
+
+
+@app.get("/admin/udp/config")
+def get_udp_config(_: User = Depends(require_admin)) -> Dict:
+    return source_manager.udp_receiver.config.to_dict()
+
+
+@app.put("/admin/udp/config")
+async def update_udp_config(
+    payload: UdpConfigUpdate, _: User = Depends(require_admin)
+) -> Dict[str, str]:
+    update_data = payload.model_dump(exclude_unset=True)
+    if "packet_format" in update_data:
+        try:
+            UdpPacketFormat(update_data["packet_format"])
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid format. Must be one of: {', '.join(f.value for f in UdpPacketFormat)}",
+            )
+    await source_manager.udp_receiver.stop()
+    source_manager.update_udp_config(**update_data)
+    await source_manager.udp_receiver.start()
+    return {"status": "updated"}
+
+
+@app.post("/admin/udp/restart")
+async def restart_udp(_: User = Depends(require_admin)) -> Dict[str, str]:
+    await source_manager.udp_receiver.stop()
+    await source_manager.udp_receiver.start()
+    return {"status": "restarted", "state": source_manager.udp_receiver.state.value}
+
+
+@app.get("/admin/udp/capture")
+def get_udp_capture(
+    limit: int = Query(50, ge=1, le=200),
+    _: User = Depends(require_admin),
+) -> List[Dict]:
+    return source_manager.udp_receiver.get_captured_packets(limit)
+
+
+@app.post("/admin/udp/capture/clear")
+def clear_udp_capture(_: User = Depends(require_admin)) -> Dict[str, str]:
+    source_manager.udp_receiver.clear_capture()
+    return {"status": "cleared"}

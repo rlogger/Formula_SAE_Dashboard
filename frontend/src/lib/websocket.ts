@@ -16,7 +16,7 @@ const STALE_CONNECTION_TIMEOUT = 15_000; // 15s without messages = stale
 export class TelemetryWebSocket {
   private ws: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private staleTimer: ReturnType<typeof setTimeout> | null = null;
+  private staleTimer: ReturnType<typeof setInterval> | null = null;
   private token: string;
   private callbacks: WebSocketCallbacks;
   private shouldReconnect = true;
@@ -112,14 +112,6 @@ export class TelemetryWebSocket {
       try { this.ws.close(); } catch { /* ignore */ }
       this.ws = null;
     }
-  }
-
-  isConnected(): boolean {
-    return this.ws?.readyState === WebSocket.OPEN;
-  }
-
-  get reconnectAttempt(): number {
-    return this.attempt;
   }
 
   private forceReconnect(): void {

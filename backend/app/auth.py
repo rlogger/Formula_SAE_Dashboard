@@ -20,7 +20,10 @@ JWT_SECRET = os.getenv("JWT_SECRET")
 if not JWT_SECRET:
     raise RuntimeError("JWT_SECRET environment variable is required")
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "720"))
+try:
+    JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "720"))
+except (ValueError, TypeError):
+    JWT_EXPIRE_MINUTES = 720
 
 # Password validation constants
 MIN_PASSWORD_LENGTH = 8
@@ -55,6 +58,12 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication token",
         ) from exc
+
+    if not username:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token",
+        )
 
     with Session(engine) as session:
         user = session.exec(

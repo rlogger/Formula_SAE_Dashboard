@@ -17,7 +17,7 @@ type WebSocketContextType = {
   connected: boolean;
   connectionState: ConnectionState;
   latestFrame: TelemetryFrame | null;
-  dataSource: "simulated" | "serial" | null;
+  dataSource: "simulated" | "serial" | "udp_broadcast" | null;
   reconnectAttempt: number;
   connect: () => void;
   disconnect: () => void;
@@ -38,7 +38,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const [connected, setConnected] = useState(false);
   const [connectionState, setConnectionState] = useState<ConnectionState>("disconnected");
   const [latestFrame, setLatestFrame] = useState<TelemetryFrame | null>(null);
-  const [dataSource, setDataSource] = useState<"simulated" | "serial" | null>(null);
+  const [dataSource, setDataSource] = useState<"simulated" | "serial" | "udp_broadcast" | null>(null);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const wsRef = useRef<TelemetryWebSocket | null>(null);
 
@@ -46,6 +46,14 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     if (!token || wsRef.current) return;
     const ws = new TelemetryWebSocket(token, {
       onMessage: (data) => {
+        if (
+          !data ||
+          typeof data !== "object" ||
+          !("channels" in data) ||
+          typeof (data as Record<string, unknown>).channels !== "object"
+        ) {
+          return;
+        }
         const frame = data as TelemetryFrame;
         setLatestFrame(frame);
         if (frame.source) {
@@ -57,9 +65,11 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         setConnectionState("connected");
         setReconnectAttempt(0);
       },
-      onClose: () => {
+      onClose: (reason) => {
         setConnected(false);
-        // State will be updated by onReconnecting or stay disconnected
+        if (reason === "Unauthorized") {
+          setConnectionState("failed");
+        }
       },
       onReconnecting: (attempt) => {
         setConnectionState("reconnecting");
@@ -74,8 +84,9 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   }, [token]);
 
   const disconnect = useCallback(() => {
-    wsRef.current?.disconnect();
+    const ws = wsRef.current;
     wsRef.current = null;
+    ws?.disconnect();
     setConnected(false);
     setConnectionState("disconnected");
     setLatestFrame(null);
@@ -83,11 +94,11 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     setReconnectAttempt(0);
   }, []);
 
-  // Clean up on token change or unmount
   useEffect(() => {
     return () => {
-      wsRef.current?.disconnect();
+      const ws = wsRef.current;
       wsRef.current = null;
+      ws?.disconnect();
     };
   }, [token]);
 
