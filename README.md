@@ -251,6 +251,74 @@ Common field properties:
 - `lookback`
 - `validity_window`
 
+## Admin Workflow
+
+The admin area is the operational hub of the app. A typical setup flow is:
+
+1. Log in with the configured admin account.
+2. Open `Admin > LDX` and set the watch directory that contains `.ldx` files.
+3. Create users and assign their subteam roles.
+4. Open `Admin > Sensors` to review or customize telemetry channels.
+5. Open `Admin > Modem` to choose the active telemetry source and configure
+   serial or UDP input settings.
+6. Use `Admin > Audit` to review changes and `Admin > LDX` to export the
+   database before any destructive cleanup.
+
+## LDX Lifecycle
+
+The current LDX pipeline behaves like this:
+
+- The watcher scans the configured watch directory for new `.ldx` files every 5
+  seconds.
+- When a new file is detected, the backend injects the latest stored form
+  values.
+- Text values are written as `Layers/Details/String` entries.
+- Numeric values are written as `Maths/MathConstants/MathConstant` entries.
+- Each injected value is recorded in `InjectionLog`, including the exact value
+  written and where it was written.
+- `Admin > LDX` shows tracked files, per-file injection history, aggregate
+  counts, database export, and data-clear actions.
+- The `Reinject Values` action replays the stored injection history for one file
+  instead of pulling newer values from the database.
+- A verification loop runs every `LDX_VERIFY_INTERVAL_SECONDS` seconds
+  (60 seconds by default) and restores missing injected values if a later MoTeC
+  rewrite removes them.
+
+## Telemetry Operations
+
+Telemetry can come from multiple sources:
+
+- `auto`: prefer serial if connected, then UDP broadcast, otherwise simulated
+- `serial`: Digi Bee SX or another serial bridge feeding the backend
+- `udp_broadcast`: passive WiFi listener on the configured UDP port
+- `simulated`: generated data for testing and demos
+
+Useful operational notes:
+
+- `Admin > Modem` lets admins switch sources, save serial settings, save UDP
+  settings, restart listeners, and inspect captured UDP packets.
+- UDP packet capture is useful when onboarding a new WiFi telemetry format. Set
+  the UDP format to `raw` or `auto`, inspect traffic in the UI, then tighten the
+  parser configuration once packet structure is clear.
+- The live dashboard reads channel metadata from the backend and connects to
+  WebSocket telemetry at `/ws/telemetry?token=<jwt>` under the current API base.
+- In Docker, Caddy proxies API and WebSocket traffic through `/api`, so the
+  frontend can continue using relative paths.
+
+## Troubleshooting
+
+- If the frontend loads but API requests fail in local development, verify that
+  `NEXT_PUBLIC_API_URL=http://localhost:8000` is set when running `npm run dev`.
+- If no `.ldx` files appear in the admin page, confirm the watch directory is
+  set in `Admin > LDX`, the files end in `.ldx`, and the backend process can
+  read that directory.
+- If telemetry stays on simulated data in `auto` mode, check `Admin > Modem`
+  for the serial connection state and UDP listener state.
+- If a packet source is new or undocumented, start with UDP capture in `raw` or
+  `auto` mode before committing to a parsing format.
+- Before using `Clear Data`, export the database from `Admin > LDX` so audit
+  logs, form values, and injection history are preserved.
+
 ## Repository Layout
 
 ```text
