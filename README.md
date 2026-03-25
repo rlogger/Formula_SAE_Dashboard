@@ -103,6 +103,11 @@ NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
 
 The frontend will be available at `http://localhost:3000`.
 
+For local development, `NEXT_PUBLIC_API_URL` should point directly at the
+FastAPI server. If you leave it empty outside Docker, the frontend will try to
+call relative `/api` paths that are only available when Caddy is in front of
+the app.
+
 ### First Login
 
 Log in with the admin credentials defined in your backend environment.
@@ -169,6 +174,42 @@ To remove persistent container state as well:
 ```bash
 docker compose down -v
 ```
+
+## Environment Variables
+
+These are the main runtime knobs used by the current codebase.
+
+| Variable | Used By | Default | Notes |
+| --- | --- | --- | --- |
+| `ADMIN_USERNAME` | backend | none | Required. Admin account username applied at startup. |
+| `ADMIN_PASSWORD` | backend | none | Required. Admin account password applied at startup. |
+| `JWT_SECRET` | backend | none | Required. Used to sign auth tokens. |
+| `JWT_EXPIRE_MINUTES` | backend | `720` | Token lifetime in minutes. |
+| `ALLOWED_ORIGINS` | backend | `http://localhost:8080,http://localhost:5173,http://localhost:3000` | CORS allowlist for direct backend access. |
+| `DATA_DIR` | backend | `backend/data` | Base directory for SQLite storage when `DATABASE_URL` is not set. |
+| `DATABASE_URL` | backend | SQLite in `DATA_DIR` | Override the default database location. |
+| `FORMS_DIR` | backend | `backend/forms` | Override the form schema directory. |
+| `LDX_WATCH_DIR` | backend | unset | Default LDX watch directory before an admin saves one in the UI. |
+| `LDX_VERIFY_INTERVAL_SECONDS` | backend | `60` | How often the backend re-checks tracked `.ldx` files for missing injected values. |
+| `NEXT_PUBLIC_API_URL` | frontend | `/api` | Leave empty in Docker behind Caddy. Set to `http://localhost:8000` for local dev. |
+| `DOMAIN` | Caddy | `localhost` | Hostname used by Caddy for HTTP/HTTPS serving. |
+| `TELEMETRY_SOURCE` | backend | `auto` | One of `auto`, `serial`, `udp_broadcast`, or `simulated`. |
+| `SERIAL_PORT` | backend | empty | Serial device path for the Digi Bee SX receiver. |
+| `SERIAL_BAUD` | backend | `9600` | Serial baud rate. |
+| `SERIAL_FORMAT` | backend | `csv` | One of `csv`, `motec_binary`, or `auto`. |
+| `SERIAL_TIMEOUT` | backend | `2.0` | Serial read timeout in seconds. |
+| `SERIAL_RECONNECT` | backend | `5.0` | Serial reconnect interval in seconds. |
+| `SERIAL_CSV_CHANNELS` | backend | built-in list | Optional comma-separated channel order for CSV serial frames. |
+| `SERIAL_CSV_SEPARATOR` | backend | `,` | CSV separator for serial frames. |
+| `UDP_PORT` | backend | `50000` | UDP listener port. Also exposed by Docker Compose. |
+| `UDP_BIND_ADDRESS` | backend | `0.0.0.0` | Bind address for UDP telemetry. |
+| `UDP_PACKET_FORMAT` | backend | `auto` | One of `csv`, `json`, `raw`, or `auto`. |
+| `UDP_CSV_CHANNELS` | backend | built-in list | Optional comma-separated channel order for CSV UDP frames. |
+| `UDP_CSV_SEPARATOR` | backend | `,` | CSV separator for UDP frames. |
+
+If you are starting with Docker, `.env.example` is the best reference because
+it already reflects the expected production-style wiring for Caddy, the
+frontend, and telemetry inputs.
 
 ## Form Schema
 
