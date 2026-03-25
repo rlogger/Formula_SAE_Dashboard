@@ -98,5 +98,7 @@ class InjectionLog(SQLModel, table=True):
     ldx_path: str = Field(index=True)
     field_id: str
     value: str
+    entry_type: Optional[str] = None
+    unit: Optional[str] = None
     was_update: bool = False
     injected_at: datetime = Field(default_factory=_utcnow)

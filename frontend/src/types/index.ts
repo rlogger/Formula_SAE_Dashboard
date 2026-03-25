@@ -61,3 +61,10 @@ export type LdxFileStats = {
   updates: number;
   static: number;
 };
+
+export type LdxReinjectResult = {
+  file_name: string;
+  created: number;
+  updated: number;
+  unchanged: number;
+};

@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, field_validator
-from sqlmodel import Session, col, delete, func, select
+from sqlmodel import Session, delete, func, select
 
 from .auth import (
     MIN_PASSWORD_LENGTH,
@@ -27,7 +27,12 @@ from .auth import (
 )
 from .database import DATA_DIR, engine, init_db
 from .forms import FormSchema, get_form_by_role, list_roles, load_forms
-from .ldx_watcher import LdxWatcher, get_watch_directory, set_watch_directory
+from .ldx_watcher import (
+    LdxWatcher,
+    get_watch_directory,
+    reinject_logged_values_into_ldx,
+    set_watch_directory,
+)
 from .models import (
     AuditLog, DashboardPreference, FormValue, InjectionLog, LdxFile,
     Role, SubteamRole, TelemetrySensor, User,
@@ -49,7 +54,9 @@ MAX_SENSOR_GROUP_LENGTH = 64
 MAX_DASHBOARD_CONFIG_LENGTH = 100_000  # 100KB
 MAX_FORM_VALUES_PER_SUBMIT = 200
 
-watcher = LdxWatcher()
+watcher = LdxWatcher(
+    verify_interval_seconds=int(os.getenv("LDX_VERIFY_INTERVAL_SECONDS", "60"))
+)
 
 
 @asynccontextmanager
@@ -184,6 +191,32 @@ class LdxFileInfo(BaseModel):
     name: str
     size: int
     modified_at: datetime
+
+
+def _validate_ldx_file_name(file_name: str) -> None:
+    if "/" in file_name or "\\" in file_name or ".." in file_name:
+        raise HTTPException(status_code=400, detail="Invalid file name")
+    if not file_name.endswith(".ldx"):
+        raise HTTPException(status_code=400, detail="File must be an .ldx file")
+
+
+def _resolve_ldx_file_path(file_name: str) -> Path:
+    _validate_ldx_file_name(file_name)
+
+    watch_dir = get_watch_directory()
+    if not watch_dir or not os.path.isdir(watch_dir):
+        raise HTTPException(
+            status_code=400,
+            detail="Watch directory not configured or does not exist",
+        )
+
+    resolved = (Path(watch_dir) / file_name).resolve()
+    watch_path = Path(watch_dir).resolve()
+    if resolved.parent != watch_path:
+        raise HTTPException(status_code=400, detail="Invalid file name")
+    if not resolved.exists() or not resolved.is_file():
+        raise HTTPException(status_code=404, detail="LDX file not found")
+    return resolved
 
 
 @app.get("/health")
@@ -617,15 +650,11 @@ class InjectionLogView(BaseModel):
 def ldx_file_injections(
     file_name: str, _: User = Depends(require_admin)
 ) -> List[InjectionLogView]:
-    # Prevent path traversal in file_name
-    if "/" in file_name or "\\" in file_name or ".." in file_name:
-        raise HTTPException(status_code=400, detail="Invalid file name")
-    if not file_name.endswith(".ldx"):
-        raise HTTPException(status_code=400, detail="File must be an .ldx file")
+    ldx_path = str(_resolve_ldx_file_path(file_name))
     with Session(engine) as session:
         logs = session.exec(
             select(InjectionLog)
-            .where(col(InjectionLog.ldx_path).endswith(f"/{file_name}"))
+            .where(InjectionLog.ldx_path == ldx_path)
             .order_by(InjectionLog.injected_at.desc())
         ).all()
         return [
@@ -639,6 +668,52 @@ def ldx_file_injections(
         ]
 
 
+class LdxReinjectResponse(BaseModel):
+    file_name: str
+    created: int
+    updated: int
+    unchanged: int
+
+
+@app.post(
+    "/admin/ldx-files/{file_name}/reinject",
+    response_model=LdxReinjectResponse,
+)
+def reinject_ldx_file(
+    file_name: str, _: User = Depends(require_admin)
+) -> LdxReinjectResponse:
+    path = _resolve_ldx_file_path(file_name)
+    injected_at = datetime.now(timezone.utc)
+
+    with Session(engine) as session:
+        summary = reinject_logged_values_into_ldx(path, session, injected_at)
+        if summary.total == 0:
+            raise HTTPException(
+                status_code=404,
+                detail="No stored injection history found for this file",
+            )
+
+        record = session.exec(
+            select(LdxFile).where(LdxFile.path == str(path))
+        ).first()
+        if record:
+            try:
+                record.mtime = path.stat().st_mtime
+            except OSError:
+                pass
+            session.add(record)
+
+        if summary.changed_count > 0:
+            session.commit()
+
+    return LdxReinjectResponse(
+        file_name=file_name,
+        created=summary.created,
+        updated=summary.updated,
+        unchanged=summary.unchanged,
+    )
+
+
 class LdxFileStatsView(BaseModel):
     file_name: str
     total: int
@@ -648,8 +723,11 @@ class LdxFileStatsView(BaseModel):
 
 @app.get("/admin/ldx-stats", response_model=List[LdxFileStatsView])
 def ldx_stats(_: User = Depends(require_admin)) -> List[LdxFileStatsView]:
+    watch_dir = get_watch_directory()
+    watch_path = Path(watch_dir).resolve() if watch_dir and os.path.isdir(watch_dir) else None
+
     with Session(engine) as session:
-        from sqlalchemy import case, cast, String as SAString
+        from sqlalchemy import case
         rows = session.exec(
             select(
                 InjectionLog.ldx_path,
@@ -659,6 +737,12 @@ def ldx_stats(_: User = Depends(require_admin)) -> List[LdxFileStatsView]:
         ).all()
         stats: Dict[str, Dict[str, int]] = {}
         for ldx_path, total, updates in rows:
+            try:
+                resolved_path = Path(ldx_path).resolve()
+            except OSError:
+                continue
+            if watch_path and resolved_path.parent != watch_path:
+                continue
             name = Path(ldx_path).name
             if name not in stats:
                 stats[name] = {"total": 0, "updates": 0}

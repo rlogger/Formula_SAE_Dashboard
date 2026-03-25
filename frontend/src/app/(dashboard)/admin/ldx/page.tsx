@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSWRConfig } from "swr";
 import { toast } from "sonner";
 import { useLdxFiles } from "@/hooks/use-ldx-files";
 import { useAuth } from "@/hooks/use-auth";
@@ -17,6 +18,7 @@ import { Download, Trash2, ArrowDownToLine } from "lucide-react";
 
 export default function LdxPage() {
   const { token } = useAuth();
+  const { mutate: mutateCache } = useSWRConfig();
   const { data: files, isLoading, mutate: mutateFiles } = useLdxFiles();
   const [watchDir, setWatchDir] = useState("");
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -53,7 +55,7 @@ export default function LdxPage() {
       await apiFetch("/admin/clear-data", { method: "POST" }, token);
       setMessage("All data cleared.");
       toast.success("All data cleared");
-      mutateFiles();
+      await refreshLdxViews();
     } catch {
       setMessage("Clear failed.");
       toast.error("Clear failed");
@@ -71,10 +73,17 @@ export default function LdxPage() {
       await apiFetch("/admin/clear-data", { method: "POST" }, token);
       setMessage(`Exported ${result.filename} and cleared all data.`);
       toast.success(`Exported ${result.filename} and cleared all data`);
-      mutateFiles();
+      await refreshLdxViews();
     } catch {
       setMessage("Export & Clear failed.");
       toast.error("Export & Clear failed");
+    }
+  };
+
+  const refreshLdxViews = async () => {
+    await mutateFiles();
+    if (token) {
+      await mutateCache(["/admin/ldx-stats", token]);
     }
   };
 
@@ -95,7 +104,9 @@ export default function LdxPage() {
         <CardContent>
           <WatchDirectoryForm
             initialPath={watchDir}
-            onSaved={() => mutateFiles()}
+            onSaved={() => {
+              void refreshLdxViews();
+            }}
           />
         </CardContent>
       </Card>
@@ -147,6 +158,9 @@ export default function LdxPage() {
       <LdxInjectionDialog
         fileName={selectedFile}
         onClose={() => setSelectedFile(null)}
+        onReinjected={() => {
+          void refreshLdxViews();
+        }}
       />
 
       <ConfirmDialog
