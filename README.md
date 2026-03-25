@@ -1,61 +1,99 @@
-# SCR Formula SAE Dashboard
+# Formula SAE Dashboard
 
-A role-based forms and live telemetry system for a Formula SAE team. Users
-login, see only their assigned subteam forms, and submit updates. Every change
-is recorded with timestamps and user information. The backend watches a folder
-for new `.ldx` XML files and injects the latest values into the file's `detail`
-section. Live telemetry streams sensor data via WebSocket for real-time
-monitoring with configurable charts.
+Formula SAE Dashboard is a combined forms, LDX injection, and live telemetry
+system for a race team. It gives subteams their own role-scoped forms, keeps a
+full audit trail of updates, injects the latest configuration values into MoTeC
+`.ldx` files, and streams live telemetry into a browser dashboard.
 
-## Features
-- Role-based login (admin or subteam roles)
-- Config-driven forms (YAML)
-- Latest values prefilled on forms
-- Audit log of every field change
-- Admin dashboard for user management, sensor config, audit table, and LDX files
-- LDX watcher that injects current values into new `.ldx` files
-- Live telemetry with configurable line, gauge, and numeric charts
-- Dynamic sensor management (add/edit/delete telemetry channels)
-- WebSocket streaming with auto-reconnect and exponential backoff
+The project is split into a FastAPI backend and a Next.js frontend, with SQLite
+used for persistence and Caddy used as the reverse proxy in Docker deployments.
 
-## Tech Stack
-- **Backend:** FastAPI + SQLModel + SQLite + WebSocket telemetry
-- **Frontend:** Next.js 14 (App Router) + shadcn/ui + Tailwind CSS + Recharts + SWR
-- **Deployment:** Docker Compose + Caddy reverse proxy
+## Current Capabilities
 
-## Prerequisites
+- Role-based authentication for admin and subteam users
+- YAML-driven form definitions with current values prefilled
+- Audit logging for every form field change
+- Admin UI for users, sensors, telemetry configuration, audit history, and LDX
+  file management
+- Automatic LDX watching and value injection for new `.ldx` files
+- Manual LDX reinjection from stored injection history
+- Automatic LDX verification and recovery when injected values are removed by a
+  later MoTeC rewrite
+- Live telemetry dashboard with line, gauge, and numeric widgets
+- Telemetry source selection across simulated, serial modem, and UDP broadcast
+  inputs
+- Sensor/channel management from the admin UI
 
-- **Local development:** Python 3.11+, Node.js 18+, npm
-- **Docker deployment:** Docker and Docker Compose
+## Stack
 
----
+- Backend: FastAPI, SQLModel, SQLite, WebSockets
+- Frontend: Next.js 14 App Router, React 18, Tailwind CSS, shadcn/ui, SWR,
+  Recharts
+- Deployment: Docker Compose, Caddy
+- Telemetry inputs: simulated generator, Digi Bee SX serial bridge, passive UDP
+  broadcast listener
 
-## Quick Start (Local Development)
+## System Overview
 
-### 1. Start the Backend
+1. The Next.js frontend calls the FastAPI backend over REST and connects to live
+   telemetry over WebSocket.
+2. The backend stores users, roles, form values, audit logs, sensor
+   configuration, LDX file history, and injection history in SQLite.
+3. The LDX watcher scans the configured watch directory for new `.ldx` files,
+   injects values into them, and records exactly what was written.
+4. A second verification task re-checks tracked `.ldx` files and restores
+   missing injected values if a later rewrite removes them.
+5. The telemetry source manager chooses between serial, UDP broadcast, or
+   simulated telemetry and publishes frames to connected dashboard clients.
+
+## Roles
+
+The backend currently supports these role names:
+
+- `DAQ`
+- `Chief`
+- `suspension`
+- `electronic`
+- `drivetrain`
+- `driver`
+- `chasis`
+- `aero`
+- `ergo`
+- `powertrain`
+
+Admins do not need subteam roles. Non-admin users can be assigned up to two
+roles.
+
+## Local Development
+
+### Backend
 
 ```bash
 cd backend
-python -m venv .venv
-source .venv/bin/activate        # On Windows: .venv\Scripts\activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Set the required environment variables and start the server:
+Set the minimum required environment variables and start the API:
 
 ```bash
 export ADMIN_USERNAME=admin
 export ADMIN_PASSWORD=admin123
-export JWT_SECRET=change-me
+export JWT_SECRET=$(openssl rand -hex 32)
 
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-The API is now running at `http://localhost:8000`. You can verify at `http://localhost:8000/health`.
+The backend will be available at:
 
-### 2. Start the Frontend
+- API: `http://localhost:8000`
+- Health check: `http://localhost:8000/health`
+- OpenAPI docs: `http://localhost:8000/docs`
 
-In a separate terminal:
+### Frontend
+
+In a second terminal:
 
 ```bash
 cd frontend
@@ -63,133 +101,130 @@ npm install
 NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
 ```
 
-Open **http://localhost:3000** in your browser. Login with the admin credentials you set above (`admin` / `admin123`).
+The frontend will be available at `http://localhost:3000`.
 
-### 3. (Optional) Start Telemetry
+### First Login
 
-The telemetry WebSocket endpoint is available at `ws://localhost:8000/ws/telemetry?token=<jwt>`. Any client that sends JSON frames in the format `{"channels": {"sensor_id": value}, "timestamp": unix_seconds}` will broadcast data to all connected dashboard users.
+Log in with the admin credentials defined in your backend environment.
 
----
+### Optional Nix Workflow
+
+If you use the provided Nix shell and helper aliases, see
+[`DEV_SETUP.md`](DEV_SETUP.md).
 
 ## Docker Deployment
 
-### 1. Configure Environment
+### 1. Create the runtime config
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` with your values:
+For a local Docker run, the important values are usually:
 
 ```env
-DOMAIN=dashboard.yourteam.com    # or "localhost" for local Docker
+DOMAIN=localhost
 ADMIN_USERNAME=admin
-ADMIN_PASSWORD=your_secure_password
-JWT_SECRET=$(openssl rand -hex 32)
-ALLOWED_ORIGINS=https://dashboard.yourteam.com
+ADMIN_PASSWORD=change_this_password_123
+JWT_SECRET=<generate-a-secure-value>
+ALLOWED_ORIGINS=http://localhost
+NEXT_PUBLIC_API_URL=
 ```
 
-### 2. (Optional) Create LDX Directory
+`NEXT_PUBLIC_API_URL` should stay empty when the frontend is served behind
+Caddy, because the app uses relative `/api` requests in that mode.
+
+### 2. Create the LDX directory
 
 ```bash
 mkdir -p ldx
 ```
 
-### 3. Build and Run
+The Docker backend mounts that folder at `/ldx` and uses it as the default LDX
+watch directory.
+
+### 3. Build and run
 
 ```bash
 docker compose up --build -d
 ```
 
-### 4. Access the Dashboard
+### 4. Access the app
 
-| Service | URL |
-|---------|-----|
-| Frontend | `http://<host>` (port 80 via Caddy) |
-| Backend API | `http://<host>/api` (proxied through Caddy) |
+| Surface | URL |
+| --- | --- |
+| Dashboard | `http://localhost` |
+| Backend API through Caddy | `http://localhost/api` |
+| Backend health check through Caddy | `http://localhost/api/health` |
+| UDP telemetry listener | `udp://<host>:50000` by default |
 
-For production with a real domain, Caddy auto-provisions HTTPS via Let's Encrypt.
-
-### First Login
-
-Use the admin credentials from your `.env` file. Change the password after first login.
-
-### Stopping the Dashboard
+### 5. Stop the stack
 
 ```bash
 docker compose down
 ```
 
-To stop and remove all data volumes:
+To remove persistent container state as well:
 
 ```bash
 docker compose down -v
 ```
 
----
+## Form Schema
 
-## Roles
+Form definitions live in `backend/forms/` and are loaded from YAML. Each file
+maps to one subteam role.
 
-Subteam roles: `DAQ`, `Chief`, `suspension`, `electronic`, `drivetrain`,
-`driver`, `chasis`, `aero`, `ergo`, `powertrain`.
-
-Admins do not have subteam roles. Non-admin users can have up to two subteam
-roles.
-
-## Form Configuration
-
-Forms live in `backend/forms/` as YAML files. Each file maps to a role.
-
-Example (`backend/forms/daq.yaml`):
+Example:
 
 ```yaml
-form_name: "DAQ Form"
-role: "DAQ"
+form_name: "Aero"
+role: "aero"
 fields:
-  - name: "sampling_rate"
-    label: "Sampling Rate (Hz)"
+  - name: "rear_element_2_position"
+    label: "Rear Element 2 Position"
     type: "number"
-    required: true
+    unit: "deg"
+  - name: "rake_id"
+    label: "Rake ID"
+    type: "text"
   - name: "notes"
     label: "Notes"
     type: "textarea"
 ```
 
-Supported field types: `text`, `number`, `textarea`, `select` (with `options`).
+Supported field types:
 
-Optional field properties:
-- `tab` - group fields into named tabs
-- `lookback` - show previous run's value alongside current
-- `validity_window` - time window (seconds) after which a value is considered stale
-- `unix_timestamp` - display raw timestamps in human-readable format
+- `text`
+- `number`
+- `textarea`
+- `select`
 
-## Environment Variables
+Common field properties:
 
-| Variable | Where | Description |
-|----------|-------|-------------|
-| `ADMIN_USERNAME` | Backend | Bootstrap admin username (first run only) |
-| `ADMIN_PASSWORD` | Backend | Bootstrap admin password (first run only) |
-| `JWT_SECRET` | Backend | Secret for signing JWT tokens |
-| `LDX_WATCH_DIR` | Backend | Default watch directory for LDX files |
-| `ALLOWED_ORIGINS` | Backend | CORS allowed origins (comma-separated) |
-| `DOMAIN` | Caddy | Server domain (`localhost` for local dev) |
-| `NEXT_PUBLIC_API_URL` | Frontend | Backend URL (leave empty in Docker; set to `http://localhost:8000` for local dev) |
+- `required`
+- `options`
+- `placeholder`
+- `unit`
+- `tab`
+- `lookback`
+- `validity_window`
 
-## Admin Workflow
+## Repository Layout
 
-1. Login as admin.
-2. Set the LDX watch directory in the admin dashboard (use `/ldx` in Docker).
-3. Create users and assign roles.
-4. Configure telemetry sensors under Admin > Sensors.
-5. Use the audit table to review recent changes.
-6. Admin can open and submit any form with current values prefilled.
-
-## LDX Injection
-
-When a new `.ldx` file appears in the watch directory, the backend injects all
-current form values into the file's `detail` section as `<entry>` elements.
-
-## Data Storage
-
-- SQLite DB is stored in `backend/data/app.db` (mounted as a Docker volume).
-- Back up the DB by copying this file, or use the Export Database button in Admin > LDX Files.
+```text
+Formula_SAE_Dashboard/
+├── backend/
+│   ├── app/
+│   ├── forms/
+│   ├── tests/
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   ├── public/
+│   └── package.json
+├── docker-compose.yml
+├── Caddyfile
+├── DEV_SETUP.md
+└── README.md
+```
