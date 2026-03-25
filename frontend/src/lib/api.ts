@@ -12,6 +12,10 @@ export class ApiError extends Error {
     this.status = status;
     this.statusText = statusText;
   }
+
+  get isUnauthorized(): boolean {
+    return this.status === 401;
+  }
 }
 
 export async function apiFetch<T>(
