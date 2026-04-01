@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import stat
 from xml.etree import ElementTree
 
 import pytest
@@ -190,3 +191,28 @@ def test_reinject_logged_values_restores_missing_and_changed_entries(
         logs = session.exec(select(InjectionLog)).all()
 
     assert len(logs) == 4
+
+
+def test_inject_preserves_ldx_mode(isolated_ldx_env):
+    test_engine, tmp_path = isolated_ldx_env
+    ldx_path = tmp_path / "permissions.ldx"
+    _write_minimal_ldx(ldx_path)
+
+    target_mode = 0o664
+    ldx_path.chmod(target_mode)
+
+    injected_at = datetime.now(timezone.utc)
+    with Session(test_engine) as session:
+        session.add(
+            FormValue(
+                form_name="Aero",
+                field_name="rake_id",
+                value="R1",
+                updated_at=injected_at,
+            )
+        )
+        inject_values_into_ldx(ldx_path, session, injected_at)
+        session.commit()
+
+    actual_mode = stat.S_IMODE(ldx_path.stat().st_mode)
+    assert actual_mode == target_mode

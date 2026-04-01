@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import stat
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -365,15 +366,26 @@ def _write_ldx_tree(tree: ElementTree.ElementTree, root: ElementTree.Element, pa
     ElementTree.indent(root, space=" ", level=0)
 
     dir_path = path.parent
+    original_stat = None
+    try:
+        original_stat = path.stat()
+    except OSError:
+        pass
+
     fd, tmp_path = tempfile.mkstemp(dir=str(dir_path), suffix=".tmp")
     try:
         os.close(fd)
         tree.write(tmp_path, encoding="utf-8", xml_declaration=True)
-        # Preserve original file permissions; default to 0o644 if file is new
-        try:
-            st = os.stat(str(path))
-            os.chmod(tmp_path, st.st_mode)
-        except OSError:
+        if original_stat is not None:
+            os.chmod(tmp_path, stat.S_IMODE(original_stat.st_mode))
+            try:
+                os.chown(tmp_path, original_stat.st_uid, original_stat.st_gid)
+            except PermissionError:
+                logger.debug(
+                    "Unable to preserve owner/group for %s; insufficient permissions",
+                    path,
+                )
+        else:
             os.chmod(tmp_path, 0o644)
         os.replace(tmp_path, str(path))
     except Exception:
