@@ -64,7 +64,7 @@ export function WatchDirectoryForm({ initialPath, onSaved }: Props) {
         <p
           className={`text-sm ${
             message.includes("saved")
-              ? "text-green-600 dark:text-green-400"
+              ? "text-status-success-text"
               : "text-destructive"
           }`}
         >

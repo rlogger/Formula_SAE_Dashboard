@@ -26,7 +26,7 @@ export function UserTable({ users, onDeleteUser, onUpdatePassword }: Props) {
   const [passwordDialogUser, setPasswordDialogUser] = useState<User | null>(
     null
   );
-  const [deleteUserId, setDeleteUserId] = useState<number | null>(null);
+  const [deleteUser, setDeleteUser] = useState<User | null>(null);
 
   return (
     <>
@@ -44,7 +44,7 @@ export function UserTable({ users, onDeleteUser, onUpdatePassword }: Props) {
               <TableCell className="font-medium">{user.username}</TableCell>
               <TableCell>
                 {user.is_admin ? (
-                  <Badge>Admin</Badge>
+                  <Badge className="bg-racing hover:bg-racing-hover text-white">Admin</Badge>
                 ) : (
                   <div className="flex flex-wrap gap-1">
                     {user.roles.map((role) => (
@@ -69,7 +69,7 @@ export function UserTable({ users, onDeleteUser, onUpdatePassword }: Props) {
                     variant="ghost"
                     size="sm"
                     className="text-destructive hover:text-destructive"
-                    onClick={() => setDeleteUserId(user.id)}
+                    onClick={() => setDeleteUser(user)}
                   >
                     <Trash2 className="mr-1 h-3 w-3" />
                     Delete
@@ -81,7 +81,7 @@ export function UserTable({ users, onDeleteUser, onUpdatePassword }: Props) {
           {users.length === 0 && (
             <TableRow>
               <TableCell colSpan={3} className="text-center text-muted-foreground">
-                No users found.
+                No team members yet. Create a user account below to get started.
               </TableCell>
             </TableRow>
           )}
@@ -95,16 +95,16 @@ export function UserTable({ users, onDeleteUser, onUpdatePassword }: Props) {
       />
 
       <ConfirmDialog
-        open={deleteUserId !== null}
-        onOpenChange={(open) => !open && setDeleteUserId(null)}
-        title="Delete User"
-        description="Are you sure you want to delete this user? This action cannot be undone."
-        confirmLabel="Delete"
+        open={deleteUser !== null}
+        onOpenChange={(open) => !open && setDeleteUser(null)}
+        title={`Delete "${deleteUser?.username}"?`}
+        description={`This will permanently remove ${deleteUser?.username}'s account, roles, and all their access. This cannot be undone.`}
+        confirmLabel={`Delete ${deleteUser?.username}`}
         destructive
         onConfirm={() => {
-          if (deleteUserId !== null) {
-            onDeleteUser(deleteUserId);
-            setDeleteUserId(null);
+          if (deleteUser !== null) {
+            onDeleteUser(deleteUser.id);
+            setDeleteUser(null);
           }
         }}
       />

@@ -86,7 +86,7 @@ export function SensorTable({ sensors, onEdit, onDelete }: Props) {
                 colSpan={8}
                 className="text-center text-muted-foreground"
               >
-                No sensors found.
+                No sensors configured yet. Add a sensor to define a telemetry channel.
               </TableCell>
             </TableRow>
           )}
@@ -96,9 +96,9 @@ export function SensorTable({ sensors, onEdit, onDelete }: Props) {
       <ConfirmDialog
         open={deleteSensorId !== null}
         onOpenChange={(open) => !open && setDeleteSensorId(null)}
-        title="Delete Sensor"
-        description="Are you sure you want to delete this sensor? This action cannot be undone."
-        confirmLabel="Delete"
+        title={`Delete "${sensors.find(s => s.sensor_id === deleteSensorId)?.name || deleteSensorId}"?`}
+        description={`This will remove the sensor "${deleteSensorId}" from the telemetry dashboard. Any charts using this channel will stop receiving data. This cannot be undone.`}
+        confirmLabel="Delete sensor"
         destructive
         onConfirm={() => {
           if (deleteSensorId !== null) {

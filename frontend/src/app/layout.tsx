@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { Barlow_Condensed } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { AuthProvider } from "@/providers/auth-provider";
@@ -18,9 +19,18 @@ const geistMono = localFont({
   variable: "--font-geist-mono",
   weight: "100 900",
 });
+const barlowCondensed = Barlow_Condensed({
+  subsets: ["latin"],
+  weight: ["600", "700", "800"],
+  variable: "--font-heading",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
-  title: "SCR Dashboard",
+  title: {
+    template: "%s — SCR Dashboard",
+    default: "SCR Dashboard",
+  },
   description: "Formula SAE Team Dashboard",
   icons: {
     icon: "/images/fsae_logo.jpg",
@@ -36,7 +46,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${barlowCondensed.variable} font-sans antialiased`}
       >
         <ErrorBoundary>
           <ThemeProvider

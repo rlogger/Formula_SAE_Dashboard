@@ -25,9 +25,9 @@ export function AuditLogTable({ logs, page, totalPages, onPageChange }: Props) {
   if (logs.length === 0 && page === 1) {
     return (
       <EmptyState
-        icon={<FileText className="h-10 w-10" />}
+        icon={<FileText className="h-10 w-10" aria-hidden="true" />}
         title="No changes recorded"
-        description="Form changes will appear here."
+        description="Every time a team member edits a form field, the change is logged here with who changed it and when."
       />
     );
   }
@@ -50,10 +50,10 @@ export function AuditLogTable({ logs, page, totalPages, onPageChange }: Props) {
             <TableRow key={log.id}>
               <TableCell className="font-medium">{log.form_name}</TableCell>
               <TableCell>{log.field_name}</TableCell>
-              <TableCell className="max-w-[150px] truncate text-muted-foreground">
+              <TableCell className="max-w-[100px] sm:max-w-[200px] truncate text-muted-foreground">
                 {log.old_value || "-"}
               </TableCell>
-              <TableCell className="max-w-[150px] truncate">
+              <TableCell className="max-w-[100px] sm:max-w-[200px] truncate">
                 {log.new_value || "-"}
               </TableCell>
               <TableCell className="whitespace-nowrap text-sm">

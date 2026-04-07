@@ -152,7 +152,7 @@ export function CreateUserForm({ roles, onSubmit }: Props) {
             Create User
           </Button>
           {success && (
-            <p className="text-sm text-green-600 dark:text-green-400">
+            <p className="text-sm text-status-success-text">
               {success}
             </p>
           )}

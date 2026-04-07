@@ -19,7 +19,7 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 lg:px-6">
+    <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b border-b-racing/15 bg-background/95 backdrop-blur-sm px-4 lg:px-6 shadow-sm">
       <MobileNav />
       <Breadcrumbs />
       <div className="flex-1" />
@@ -30,16 +30,16 @@ export function Header() {
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
           aria-label="Toggle theme"
         >
-          <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-          <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+          <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" aria-hidden="true" />
+          <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" aria-hidden="true" />
         </Button>
         {user && (
           <div className="flex items-center gap-2">
-            <span className="hidden text-sm text-muted-foreground sm:inline-flex items-center gap-1">
-              <User className="h-3 w-3" />
+            <span className="hidden text-sm text-muted-foreground sm:inline-flex items-center gap-1.5">
+              <User className="h-3 w-3" aria-hidden="true" />
               {user.username}
               {user.is_admin && (
-                <span className="ml-1 rounded bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
+                <span className="ml-1 rounded bg-racing/15 px-1.5 py-0.5 text-xs font-semibold text-racing">
                   Admin
                 </span>
               )}
@@ -50,7 +50,7 @@ export function Header() {
               onClick={handleLogout}
               aria-label="Log out"
             >
-              <LogOut className="h-4 w-4" />
+              <LogOut className="h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
         )}

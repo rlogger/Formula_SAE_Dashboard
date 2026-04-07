@@ -16,7 +16,7 @@ export default function AdminLayout({
       <EmptyState
         icon={<Shield className="h-12 w-12" />}
         title="Admin access required"
-        description="You don't have permission to access this section."
+        description="This section is for team admins only. If you need access, ask a team admin to promote your account."
       />
     );
   }

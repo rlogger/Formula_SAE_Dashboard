@@ -1,29 +1,9 @@
 services:
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    environment:
-      - DOMAIN=${DOMAIN:-localhost}
-    depends_on:
-      backend:
-        condition: service_started
-      frontend:
-        condition: service_started
-
   backend:
     build: ./backend
     restart: unless-stopped
-    expose:
-      - "8000"
     ports:
+      - "8000:8000"
       - "${UDP_PORT:-50000}:${UDP_PORT:-50000}/udp"
     environment:
       - ADMIN_USERNAME=${ADMIN_USERNAME:?Set ADMIN_USERNAME in .env}
@@ -55,10 +35,10 @@ services:
     build:
       context: ./frontend
       args:
-        - NEXT_PUBLIC_API_URL=
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     restart: unless-stopped
-    expose:
-      - "3000"
+    ports:
+      - "3000:3000"
     depends_on:
       - backend
 
@@ -73,7 +53,3 @@ services:
   #   command: ["sqlite_web", "/data/app.db", "--host", "0.0.0.0", "--port", "8080"]
   #   depends_on:
   #     - backend
-
-volumes:
-  caddy_data:
-  caddy_config:

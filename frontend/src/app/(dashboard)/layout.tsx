@@ -1,11 +1,23 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
+import { CommandPalette } from "@/components/shared/command-palette";
+
+const PAGE_TITLES: Record<string, string> = {
+  "/forms": "Forms",
+  "/telemetry": "Telemetry",
+  "/admin": "Admin",
+  "/admin/users": "Users",
+  "/admin/audit": "Audit Log",
+  "/admin/ldx": "LDX Files",
+  "/admin/modem": "Modem Config",
+  "/admin/sensors": "Sensors",
+};
 
 export default function DashboardLayout({
   children,
@@ -14,12 +26,18 @@ export default function DashboardLayout({
 }) {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (!loading && !user) {
       router.push("/login");
     }
   }, [user, loading, router]);
+
+  useEffect(() => {
+    const label = PAGE_TITLES[pathname] ?? PAGE_TITLES[Object.keys(PAGE_TITLES).find((k) => pathname.startsWith(k + "/")) ?? ""] ?? null;
+    document.title = label ? `${label} — SCR Dashboard` : "SCR Dashboard";
+  }, [pathname]);
 
   if (loading) {
     return (
@@ -38,6 +56,7 @@ export default function DashboardLayout({
         <Header />
         <main className="flex-1 p-4 lg:p-6 animate-slide-in">{children}</main>
       </div>
+      <CommandPalette />
     </div>
   );
 }

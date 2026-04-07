@@ -10,6 +10,7 @@ const LABELS: Record<string, string> = {
   admin: "Admin",
   users: "Users",
   sensors: "Sensors",
+  modem: "Modem",
   audit: "Audit Log",
   ldx: "LDX Files",
 };
@@ -28,14 +29,17 @@ export function Breadcrumbs() {
   });
 
   return (
-    <nav className="hidden items-center gap-1 text-sm text-muted-foreground lg:flex">
+    <nav className="flex items-center gap-1 text-sm text-muted-foreground">
       {crumbs.map((crumb, i) => (
         <span key={crumb.href} className="flex items-center gap-1">
           {i > 0 && <ChevronRight className="h-3 w-3" />}
           {crumb.isLast ? (
             <span className="font-medium text-foreground">{crumb.label}</span>
           ) : (
-            <Link href={crumb.href} className="hover:text-foreground transition-colors">
+            <Link
+              href={crumb.href}
+              className="hover:text-racing transition-colors py-1"
+            >
               {crumb.label}
             </Link>
           )}

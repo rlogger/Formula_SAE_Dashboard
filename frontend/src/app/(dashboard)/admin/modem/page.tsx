@@ -200,24 +200,24 @@ export default function ModemPage() {
   if (loading) return <LoadingSpinner label="Loading configuration..." />;
 
   const stateColors: Record<string, string> = {
-    connected: "bg-green-600",
-    connecting: "bg-yellow-500",
-    disconnected: "bg-gray-400",
-    stopped: "bg-gray-400",
-    listening: "bg-blue-500",
-    receiving: "bg-green-600",
-    error: "bg-red-500",
+    connected: "bg-status-success",
+    connecting: "bg-status-warning",
+    disconnected: "bg-muted-foreground/60",
+    stopped: "bg-muted-foreground/60",
+    listening: "bg-status-info",
+    receiving: "bg-status-success",
+    error: "bg-racing",
   };
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">
+        <h1 className="font-heading text-3xl font-extrabold uppercase tracking-wide">
           Telemetry Configuration
         </h1>
-        <p className="text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Configure serial modem and WiFi broadcast receiver for live Motec
-          telemetry.
+          telemetry. Choose a data source and adjust connection settings.
         </p>
       </div>
 
@@ -225,7 +225,7 @@ export default function ModemPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Radio className="h-5 w-5" />
+            <Radio className="h-5 w-5 text-racing" />
             Telemetry Status
           </CardTitle>
         </CardHeader>
@@ -238,9 +238,9 @@ export default function ModemPage() {
                   variant="default"
                   className={`mt-1 ${
                     status.active_source === "serial"
-                      ? "bg-green-600 hover:bg-green-700"
+                      ? "bg-status-success hover:bg-status-success-hover"
                       : status.active_source === "udp_broadcast"
-                      ? "bg-blue-600 hover:bg-blue-700"
+                      ? "bg-status-info hover:bg-status-info-hover"
                       : ""
                   }`}
                 >
@@ -269,7 +269,7 @@ export default function ModemPage() {
                 <p className="text-sm text-muted-foreground">
                   Serial Frames
                 </p>
-                <p className="text-lg font-semibold mt-1">
+                <p className="font-heading text-lg font-bold tabular-nums mt-1">
                   {(status.serial?.frames_received ?? 0).toLocaleString()}
                 </p>
               </div>
@@ -277,7 +277,7 @@ export default function ModemPage() {
                 <p className="text-sm text-muted-foreground">
                   UDP Packets
                 </p>
-                <p className="text-lg font-semibold mt-1">
+                <p className="font-heading text-lg font-bold tabular-nums mt-1">
                   {status.udp?.packets_received?.toLocaleString() ?? "0"}
                 </p>
               </div>
@@ -300,7 +300,7 @@ export default function ModemPage() {
               value={status?.source_preference || "auto"}
               onValueChange={handleSourceChange}
             >
-              <SelectTrigger className="w-[240px]">
+              <SelectTrigger className="w-full sm:w-[240px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -353,8 +353,9 @@ export default function ModemPage() {
                     variant="outline"
                     size="sm"
                     onClick={handleRestart}
+                    disabled={loading || saving}
                   >
-                    <RefreshCw className="mr-2 h-4 w-4" />
+                    <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
                     Restart
                   </Button>
                 </div>
@@ -456,7 +457,7 @@ export default function ModemPage() {
                   </div>
                 </div>
                 <div className="mt-6">
-                  <Button onClick={handleSave} disabled={saving}>
+                  <Button onClick={handleSave} disabled={saving} className="bg-racing hover:bg-racing-hover text-white">
                     <Save className="mr-2 h-4 w-4" />
                     {saving ? "Saving..." : "Save & Apply"}
                   </Button>
@@ -474,7 +475,7 @@ export default function ModemPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle className="flex items-center gap-2">
-                      <RadioTower className="h-5 w-5" />
+                      <RadioTower className="h-5 w-5 text-racing" />
                       WiFi Broadcast Receiver
                     </CardTitle>
                     <CardDescription>
@@ -488,8 +489,9 @@ export default function ModemPage() {
                     variant="outline"
                     size="sm"
                     onClick={handleRestartUdp}
+                    disabled={loading || savingUdp}
                   >
-                    <RefreshCw className="mr-2 h-4 w-4" />
+                    <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
                     Restart
                   </Button>
                 </div>
@@ -611,7 +613,7 @@ export default function ModemPage() {
                   </div>
                 </div>
                 <div className="mt-6">
-                  <Button onClick={handleSaveUdp} disabled={savingUdp}>
+                  <Button onClick={handleSaveUdp} disabled={savingUdp} className="bg-racing hover:bg-racing-hover text-white">
                     <Save className="mr-2 h-4 w-4" />
                     {savingUdp ? "Saving..." : "Save & Apply"}
                   </Button>
@@ -628,7 +630,7 @@ export default function ModemPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="flex items-center gap-2">
-                    <Eye className="h-5 w-5" />
+                    <Eye className="h-5 w-5 text-racing" />
                     Packet Capture
                   </CardTitle>
                   <CardDescription>
@@ -648,6 +650,7 @@ export default function ModemPage() {
                       className={`mr-2 h-4 w-4 ${
                         captureLoading ? "animate-spin" : ""
                       }`}
+                      aria-hidden="true"
                     />
                     Refresh
                   </Button>
@@ -655,8 +658,9 @@ export default function ModemPage() {
                     variant="outline"
                     size="sm"
                     onClick={clearCapture}
+                    disabled={captureLoading}
                   >
-                    <Trash2 className="mr-2 h-4 w-4" />
+                    <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
                     Clear
                   </Button>
                 </div>
@@ -665,7 +669,7 @@ export default function ModemPage() {
             <CardContent>
               {status?.udp && (
                 <div className="grid gap-3 sm:grid-cols-4 mb-4">
-                  <div className="rounded-md border p-3">
+                  <div className="rounded-md border bg-muted/30 p-3">
                     <p className="text-xs text-muted-foreground">
                       Listener State
                     </p>
@@ -678,27 +682,27 @@ export default function ModemPage() {
                       {status.udp.state}
                     </Badge>
                   </div>
-                  <div className="rounded-md border p-3">
+                  <div className="rounded-md border bg-muted/30 p-3">
                     <p className="text-xs text-muted-foreground">
                       Packets Received
                     </p>
-                    <p className="text-lg font-semibold">
+                    <p className="font-heading text-lg font-bold tabular-nums">
                       {status.udp.packets_received.toLocaleString()}
                     </p>
                   </div>
-                  <div className="rounded-md border p-3">
+                  <div className="rounded-md border bg-muted/30 p-3">
                     <p className="text-xs text-muted-foreground">
                       Parsed Frames
                     </p>
-                    <p className="text-lg font-semibold">
+                    <p className="font-heading text-lg font-bold tabular-nums">
                       {status.udp.frames_received.toLocaleString()}
                     </p>
                   </div>
-                  <div className="rounded-md border p-3">
+                  <div className="rounded-md border bg-muted/30 p-3">
                     <p className="text-xs text-muted-foreground">
                       Parse Errors
                     </p>
-                    <p className="text-lg font-semibold">
+                    <p className="font-heading text-lg font-bold tabular-nums">
                       {status.udp.errors}
                     </p>
                   </div>
@@ -741,7 +745,7 @@ export default function ModemPage() {
                             {pkt.parsed_ok ? (
                               <Badge
                                 variant="secondary"
-                                className="bg-green-600 text-white text-xs px-1.5 py-0"
+                                className="bg-status-success text-white text-xs px-1.5 py-0"
                               >
                                 <Check className="h-3 w-3 mr-0.5" />
                                 parsed
@@ -749,7 +753,7 @@ export default function ModemPage() {
                             ) : (
                               <Badge
                                 variant="secondary"
-                                className="bg-yellow-500 text-white text-xs px-1.5 py-0"
+                                className="bg-status-warning text-white text-xs px-1.5 py-0"
                               >
                                 <X className="h-3 w-3 mr-0.5" />
                                 raw
@@ -774,7 +778,7 @@ export default function ModemPage() {
                         </div>
                         {pkt.parsed_ok &&
                           Object.keys(pkt.channels).length > 0 && (
-                            <div className="text-xs text-green-700 dark:text-green-400">
+                            <div className="text-xs text-status-success-text">
                               <span className="font-semibold">
                                 Channels:{" "}
                               </span>
@@ -784,7 +788,7 @@ export default function ModemPage() {
                             </div>
                           )}
                         {pkt.error && (
-                          <div className="text-xs text-red-600 dark:text-red-400">
+                          <div className="text-xs text-destructive">
                             Error: {pkt.error}
                           </div>
                         )}

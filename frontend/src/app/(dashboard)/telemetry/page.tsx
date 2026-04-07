@@ -25,10 +25,10 @@ export default function TelemetryPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">
+        <h1 className="font-heading text-3xl font-extrabold uppercase tracking-wide">
           Live Telemetry
         </h1>
-        <p className="text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Real-time data from the vehicle sensors.
         </p>
       </div>

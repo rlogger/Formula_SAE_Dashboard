@@ -19,9 +19,9 @@ export default function AuditPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Audit Log</h1>
-        <p className="text-muted-foreground">
-          Track all form changes across the team.
+        <h1 className="font-heading text-3xl font-extrabold uppercase tracking-wide">Audit Log</h1>
+        <p className="text-sm text-muted-foreground">
+          Track all form changes across the team. Every field edit is recorded with who changed it and when.
         </p>
       </div>
       <Card>

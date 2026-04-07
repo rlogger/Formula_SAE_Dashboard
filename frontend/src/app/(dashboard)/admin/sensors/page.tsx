@@ -76,14 +76,14 @@ export default function SensorsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">
+          <h1 className="font-heading text-3xl font-extrabold uppercase tracking-wide">
             Sensor Management
           </h1>
-          <p className="text-muted-foreground">
-            Configure telemetry sensor channels.
+          <p className="text-sm text-muted-foreground">
+            Define the data channels (e.g. speed, RPM, throttle) that appear on the live telemetry dashboard. Each sensor maps to a value the car broadcasts.
           </p>
         </div>
-        <Button onClick={openCreate}>
+        <Button onClick={openCreate} className="bg-racing hover:bg-racing-hover text-white">
           <Plus className="mr-2 h-4 w-4" />
           Add Sensor
         </Button>

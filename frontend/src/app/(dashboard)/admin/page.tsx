@@ -44,23 +44,23 @@ export default function AdminPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Admin Dashboard</h1>
-        <p className="text-muted-foreground">
+        <h1 className="font-heading text-3xl font-extrabold uppercase tracking-wide">Admin Dashboard</h1>
+        <p className="text-sm text-muted-foreground">
           Manage users, view audit logs, and configure the system.
         </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (
           <Link key={stat.href} href={stat.href}>
-            <Card className="transition-colors hover:bg-accent">
+            <Card className="transition-all hover:bg-racing-muted border-t-2 border-t-racing hover:shadow-md hover:shadow-racing/5">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-sm font-medium">
                   {stat.label}
                 </CardTitle>
-                <stat.icon className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-racing" />
+                <stat.icon className="h-4 w-4 text-racing" />
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">{stat.value}</p>
+                <p className="font-heading text-2xl font-bold tabular-nums">{stat.value}</p>
               </CardContent>
             </Card>
           </Link>
@@ -70,7 +70,7 @@ export default function AdminPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-sm">
-              <Clock className="h-4 w-4" />
+              <Clock className="h-4 w-4 text-racing" />
               Recent Activity
             </CardTitle>
           </CardHeader>

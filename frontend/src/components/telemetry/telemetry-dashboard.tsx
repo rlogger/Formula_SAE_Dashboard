@@ -151,28 +151,48 @@ export function TelemetryDashboard({ channels }: Props) {
     return () => disconnect();
   }, [disconnect]);
 
+  // Keyboard shortcuts: C to connect/disconnect, X to clear
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Skip if user is typing in an input
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      if (e.key === "c" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        if (connected) disconnect();
+        else connect();
+      } else if (e.key === "x" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        clear();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [connected, connect, disconnect, clear]);
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
         <ConnectionStatus connected={connected} connectionState={connectionState} dataSource={dataSource} reconnectAttempt={reconnectAttempt} />
         {!connected ? (
-          <Button size="sm" onClick={connect}>
+          <Button size="sm" className="bg-racing hover:bg-racing-hover text-white" onClick={connect} title="Connect (C)">
             <Play className="mr-2 h-3 w-3" />
             Connect
           </Button>
         ) : (
-          <Button size="sm" variant="outline" onClick={disconnect}>
+          <Button size="sm" variant="outline" onClick={disconnect} title="Disconnect (C)">
             <Square className="mr-2 h-3 w-3" />
             Disconnect
           </Button>
         )}
-        <Button size="sm" variant="ghost" onClick={clear}>
+        <Button size="sm" variant="ghost" onClick={clear} title="Clear data (X)">
           Clear Data
         </Button>
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">Window:</span>
           <Select value={String(timeWindow)} onValueChange={handleTimeWindowChange}>
-            <SelectTrigger className="w-[80px] h-8">
+            <SelectTrigger className="w-[80px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -285,20 +305,20 @@ export function TelemetryDashboard({ channels }: Props) {
             );
           })}
           {charts.length === 0 && (
-            <Card>
+            <Card className="border-dashed border-racing/20">
               <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-                <BarChart3 className="h-12 w-12 text-muted-foreground/50 mb-4" />
-                <h3 className="text-lg font-medium">No charts configured</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Use &quot;Add Chart&quot; or toggle channels from the sidebar to get started.
+                <BarChart3 className="h-12 w-12 text-racing/40 mb-4" />
+                <h3 className="font-heading text-lg font-semibold uppercase tracking-wide">No charts configured</h3>
+                <p className="text-sm text-muted-foreground mt-1 max-w-xs">
+                  Click &quot;Add Chart&quot; above or toggle channels from the sidebar panel to visualize live telemetry data.
                 </p>
               </CardContent>
             </Card>
           )}
         </div>
-        <Card className="h-fit">
+        <Card className="h-fit border-t-2 border-t-racing">
           <CardHeader>
-            <CardTitle className="text-sm">Channels</CardTitle>
+            <CardTitle className="text-sm font-medium">Channels</CardTitle>
           </CardHeader>
           <CardContent>
             <ChannelSelector
@@ -332,11 +352,11 @@ function ChartControls({
   onRemove: (id: string) => void;
 }) {
   return (
-    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+    <div className="absolute top-2 right-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-            <MoreVertical className="h-4 w-4" />
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label="Chart options">
+            <MoreVertical className="h-4 w-4" aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">

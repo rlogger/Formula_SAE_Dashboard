@@ -11,7 +11,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -67,16 +66,16 @@ export default function LoginPage() {
   };
 
   return (
-    <Card className="w-full max-w-md mx-auto animate-fade-in-up lg:bg-card lg:backdrop-blur-none backdrop-blur-md bg-card/80">
+    <Card className="w-full max-w-md mx-auto animate-fade-in-up lg:bg-card lg:backdrop-blur-none backdrop-blur-md bg-card/80 border-t-4 border-t-racing shadow-xl shadow-racing/5">
       <CardHeader className="text-center">
         <div className="flex justify-center mb-3">
-          <Image src="/images/fsae_logo.jpg" alt="SCR Racing" width={48} height={48} className="rounded-lg" />
+          <Image src="/images/fsae_logo.jpg" alt="SCR Racing" width={56} height={56} className="rounded-lg ring-2 ring-racing/30 shadow-lg shadow-racing/10" />
         </div>
-        <CardTitle className="text-2xl font-bold">
-          SCR Racing Dashboard
+        <CardTitle className="font-heading text-3xl font-extrabold uppercase tracking-wide">
+          SCR Racing
         </CardTitle>
         <CardDescription>
-          Sign in to access your team portal
+          Sign in to access your team dashboard
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -104,7 +103,7 @@ export default function LoginPage() {
             />
           </div>
           {error && (
-            <p className="text-sm text-destructive">{error}</p>
+            <p className="text-sm text-destructive" role="alert">{error}</p>
           )}
           <Button
             type="submit"
@@ -116,9 +115,6 @@ export default function LoginPage() {
           </Button>
         </form>
       </CardContent>
-      <CardFooter className="justify-center">
-        <p className="text-xs text-muted-foreground">Formula SAE Team Portal</p>
-      </CardFooter>
     </Card>
   );
 }

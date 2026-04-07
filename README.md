@@ -6,7 +6,7 @@ full audit trail of updates, injects the latest configuration values into MoTeC
 `.ldx` files, and streams live telemetry into a browser dashboard.
 
 The project is split into a FastAPI backend and a Next.js frontend, with SQLite
-used for persistence and Caddy used as the reverse proxy in Docker deployments.
+used for persistence.
 
 ## Current Capabilities
 
@@ -29,7 +29,7 @@ used for persistence and Caddy used as the reverse proxy in Docker deployments.
 - Backend: FastAPI, SQLModel, SQLite, WebSockets
 - Frontend: Next.js 14 App Router, React 18, Tailwind CSS, shadcn/ui, SWR,
   Recharts
-- Deployment: Docker Compose, Caddy
+- Deployment: Docker Compose
 - Telemetry inputs: simulated generator, Digi Bee SX serial bridge, passive UDP
   broadcast listener
 
@@ -104,9 +104,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
 The frontend will be available at `http://localhost:3000`.
 
 For local development, `NEXT_PUBLIC_API_URL` should point directly at the
-FastAPI server. If you leave it empty outside Docker, the frontend will try to
-call relative `/api` paths that are only available when Caddy is in front of
-the app.
+FastAPI server.
 
 ### First Login
 
@@ -136,8 +134,8 @@ ALLOWED_ORIGINS=http://localhost
 NEXT_PUBLIC_API_URL=
 ```
 
-`NEXT_PUBLIC_API_URL` should stay empty when the frontend is served behind
-Caddy, because the app uses relative `/api` requests in that mode.
+`NEXT_PUBLIC_API_URL` should point to the backend API address,
+e.g. `http://localhost:8000`.
 
 ### 2. Create the LDX directory
 
@@ -158,9 +156,9 @@ docker compose up --build -d
 
 | Surface | URL |
 | --- | --- |
-| Dashboard | `http://localhost` |
-| Backend API through Caddy | `http://localhost/api` |
-| Backend health check through Caddy | `http://localhost/api/health` |
+| Dashboard | `http://localhost:3000` |
+| Backend API | `http://localhost:8000` |
+| Backend health check | `http://localhost:8000/health` |
 | UDP telemetry listener | `udp://<host>:50000` by default |
 
 ### 5. Stop the stack
@@ -191,8 +189,7 @@ These are the main runtime knobs used by the current codebase.
 | `FORMS_DIR` | backend | `backend/forms` | Override the form schema directory. |
 | `LDX_WATCH_DIR` | backend | unset | Default LDX watch directory before an admin saves one in the UI. |
 | `LDX_VERIFY_INTERVAL_SECONDS` | backend | `60` | How often the backend re-checks tracked `.ldx` files for missing injected values. |
-| `NEXT_PUBLIC_API_URL` | frontend | `/api` | Leave empty in Docker behind Caddy. Set to `http://localhost:8000` for local dev. |
-| `DOMAIN` | Caddy | `localhost` | Hostname used by Caddy for HTTP/HTTPS serving. |
+| `NEXT_PUBLIC_API_URL` | frontend | `http://localhost:8000` | Backend API URL for the frontend. |
 | `TELEMETRY_SOURCE` | backend | `auto` | One of `auto`, `serial`, `udp_broadcast`, or `simulated`. |
 | `SERIAL_PORT` | backend | empty | Serial device path for the Digi Bee SX receiver. |
 | `SERIAL_BAUD` | backend | `9600` | Serial baud rate. |
@@ -208,8 +205,8 @@ These are the main runtime knobs used by the current codebase.
 | `UDP_CSV_SEPARATOR` | backend | `,` | CSV separator for UDP frames. |
 
 If you are starting with Docker, `.env.example` is the best reference because
-it already reflects the expected production-style wiring for Caddy, the
-frontend, and telemetry inputs.
+it already reflects the expected production-style wiring for the
+frontend, backend, and telemetry inputs.
 
 ## Form Schema
 
@@ -302,8 +299,8 @@ Useful operational notes:
   parser configuration once packet structure is clear.
 - The live dashboard reads channel metadata from the backend and connects to
   WebSocket telemetry at `/ws/telemetry?token=<jwt>` under the current API base.
-- In Docker, Caddy proxies API and WebSocket traffic through `/api`, so the
-  frontend can continue using relative paths.
+- In Docker, the frontend connects to the backend API via the
+  `NEXT_PUBLIC_API_URL` environment variable.
 
 ## Troubleshooting
 
@@ -333,7 +330,6 @@ Formula_SAE_Dashboard/
 │   ├── public/
 │   └── package.json
 ├── docker-compose.yml
-├── Caddyfile
 ├── DEV_SETUP.md
 └── README.md
 ```

@@ -16,6 +16,5 @@ npm install
 NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
 ```
 
-If `NEXT_PUBLIC_API_URL` is omitted during local development, the frontend will
-try to call relative `/api` routes that are intended for the Docker + Caddy
-setup.
+If `NEXT_PUBLIC_API_URL` is omitted, the frontend will
+try to call relative `/api` routes which may not exist.
