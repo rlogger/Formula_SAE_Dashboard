@@ -27,6 +27,7 @@ class InjectionEntry:
     value: str
     entry_type: str
     unit: str = ""
+    form_name: str = ""
 
 
 @dataclass(frozen=True)
@@ -355,6 +356,7 @@ def _append_injection_log(
             unit=entry.unit or None,
             was_update=was_update,
             injected_at=injected_at,
+            form_name=entry.form_name or None,
         )
     )
 
@@ -599,6 +601,7 @@ def inject_values_into_ldx(
                         value=inject_value,
                         entry_type=_MATH_ENTRY_TYPE,
                         unit=field_unit,
+                        form_name=value.form_name,
                     )
                 )
             else:
@@ -607,6 +610,7 @@ def inject_values_into_ldx(
                         field_id=final_id,
                         value=inject_value,
                         entry_type=_STRING_ENTRY_TYPE,
+                        form_name=value.form_name,
                     )
                 )
 
@@ -674,6 +678,72 @@ def _latest_logged_entries_for_file(
         )
 
     return list(latest_entries.values())
+
+
+def compute_pending_injection_entries(session: Session) -> List[InjectionEntry]:
+    """Return entries that would be injected into the next new LDX file.
+
+    This is a dry run — no file is read or written. Lookback fields are excluded
+    because they require a previous-run file context to resolve.
+    """
+    all_values = session.exec(select(FormValue)).all()
+    if not all_values:
+        return []
+
+    latest_values: Dict[str, FormValue] = {}
+    for value in all_values:
+        key = f"{value.form_name}.{value.field_name}"
+        current = latest_values.get(key)
+        if not current or value.updated_at > current.updated_at:
+            latest_values[key] = value
+
+    form_name_to_role, field_lookup = _build_lookup_tables()
+    now = datetime.now(timezone.utc)
+
+    by_human_field: Dict[str, List[FormValue]] = {}
+    for value in latest_values.values():
+        human_field = _to_human(value.field_name)
+        by_human_field.setdefault(human_field, []).append(value)
+
+    entries: List[InjectionEntry] = []
+
+    for human_field, values in by_human_field.items():
+        has_conflict = len(values) > 1
+
+        for value in values:
+            lookup_key = f"{value.form_name}.{value.field_name}"
+            schema_field = field_lookup.get(lookup_key)
+            field_type = schema_field.type if schema_field else "text"
+            field_unit = (schema_field.unit or "") if schema_field else ""
+
+            if schema_field and schema_field.validity_window is not None:
+                age = (now - _ensure_utc(value.updated_at)).total_seconds()
+                if age > schema_field.validity_window:
+                    continue
+
+            if schema_field and schema_field.lookback:
+                continue
+
+            if value.field_name == "notes":
+                role = form_name_to_role.get(value.form_name, value.form_name)
+                final_id = f"{role}.notes"
+            elif has_conflict:
+                final_id = f"{_to_human(value.form_name)} {human_field}"
+            else:
+                final_id = human_field
+
+            entry_type = _MATH_ENTRY_TYPE if field_type in _MATH_TYPES else _STRING_ENTRY_TYPE
+            entries.append(
+                InjectionEntry(
+                    field_id=final_id,
+                    value=value.value,
+                    entry_type=entry_type,
+                    unit=field_unit,
+                    form_name=value.form_name,
+                )
+            )
+
+    return entries
 
 
 def reinject_logged_values_into_ldx(

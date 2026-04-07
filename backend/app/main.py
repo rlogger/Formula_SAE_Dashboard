@@ -29,7 +29,9 @@ from .database import DATA_DIR, engine, init_db
 from .forms import FormSchema, get_form_by_role, list_roles, load_forms
 from .ldx_watcher import (
     LdxWatcher,
+    compute_pending_injection_entries,
     get_watch_directory,
+    inject_values_into_ldx,
     reinject_logged_values_into_ldx,
     set_watch_directory,
 )
@@ -650,6 +652,7 @@ class InjectionLogView(BaseModel):
     value: str
     was_update: bool
     injected_at: datetime
+    form_name: Optional[str] = None
 
 
 @app.get(
@@ -672,9 +675,35 @@ def ldx_file_injections(
                 value=log.value,
                 was_update=log.was_update,
                 injected_at=log.injected_at,
+                form_name=log.form_name,
             )
             for log in logs
         ]
+
+
+class PendingInjectionEntry(BaseModel):
+    form_name: str
+    field_id: str
+    value: str
+    entry_type: str
+    unit: str
+
+
+@app.get("/admin/ldx-files/pending", response_model=List[PendingInjectionEntry])
+def pending_injection_queue(_: User = Depends(require_admin)) -> List[PendingInjectionEntry]:
+    """Return the values that would be injected into the next LDX file dropped."""
+    with Session(engine) as session:
+        entries = compute_pending_injection_entries(session)
+    return [
+        PendingInjectionEntry(
+            form_name=e.form_name or "",
+            field_id=e.field_id,
+            value=e.value,
+            entry_type=e.entry_type,
+            unit=e.unit,
+        )
+        for e in entries
+    ]
 
 
 class LdxReinjectResponse(BaseModel):
@@ -714,6 +743,55 @@ def reinject_ldx_file(
 
         if summary.changed_count > 0:
             session.commit()
+
+    return LdxReinjectResponse(
+        file_name=file_name,
+        created=summary.created,
+        updated=summary.updated,
+        unchanged=summary.unchanged,
+    )
+
+
+@app.post(
+    "/admin/ldx-files/{file_name}/reprocess",
+    response_model=LdxReinjectResponse,
+)
+def reprocess_ldx_file(
+    file_name: str, _: User = Depends(require_admin)
+) -> LdxReinjectResponse:
+    """Clear existing injection record and re-inject current form values from scratch."""
+    path = _resolve_ldx_file_path(file_name)
+    detection_time = datetime.now(timezone.utc)
+
+    with Session(engine) as session:
+        record = session.exec(
+            select(LdxFile).where(LdxFile.path == str(path))
+        ).first()
+        if record:
+            old_logs = session.exec(
+                select(InjectionLog).where(InjectionLog.ldx_path == str(path))
+            ).all()
+            for log in old_logs:
+                session.delete(log)
+            session.delete(record)
+            session.flush()
+
+        summary = inject_values_into_ldx(path, session, detection_time)
+
+        try:
+            file_mtime = path.stat().st_mtime
+        except OSError:
+            raise HTTPException(status_code=500, detail="Could not stat LDX file after reprocess")
+
+        session.add(
+            LdxFile(
+                path=str(path),
+                mtime=file_mtime,
+                processed_at=detection_time,
+                short_comment=summary.short_comment,
+            )
+        )
+        session.commit()
 
     return LdxReinjectResponse(
         file_name=file_name,

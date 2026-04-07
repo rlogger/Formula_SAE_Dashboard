@@ -28,3 +28,4 @@ def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     _ensure_column("injectionlog", "entry_type", "VARCHAR")
     _ensure_column("injectionlog", "unit", "VARCHAR")
+    _ensure_column("injectionlog", "form_name", "VARCHAR")

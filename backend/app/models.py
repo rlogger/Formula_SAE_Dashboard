@@ -103,6 +103,7 @@ class InjectionLog(SQLModel, table=True):
     unit: Optional[str] = None
     was_update: bool = False
     injected_at: datetime = Field(default_factory=_utcnow)
+    form_name: Optional[str] = None
 
 
 class LdxFieldMeta(SQLModel, table=True):
