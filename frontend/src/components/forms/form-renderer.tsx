@@ -45,7 +45,6 @@ function validateField(field: FormField, value: string | null): string | null {
 export function FormRenderer({ schema, values, timestamps, previousValues, onSubmit }: Props) {
   const [draft, setDraft] = useState<Record<string, string | null>>(values);
   const [saving, setSaving] = useState(false);
-  const [saveResult, setSaveResult] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({});
   const [showErrors, setShowErrors] = useState(false);
 
@@ -56,14 +55,12 @@ export function FormRenderer({ schema, values, timestamps, previousValues, onSub
   }, [values]);
 
   useEffect(() => {
-    setSaveResult(null);
     setFieldErrors({});
     setShowErrors(false);
   }, [schema.role]);
 
   const updateField = (name: string, value: string) => {
     setDraft((prev) => ({ ...prev, [name]: value }));
-    setSaveResult(null);
     // Clear the error for this field when user types
     if (fieldErrors[name]) {
       setFieldErrors((prev) => ({ ...prev, [name]: null }));
@@ -87,27 +84,35 @@ export function FormRenderer({ schema, values, timestamps, previousValues, onSub
     setShowErrors(true);
 
     if (!validateAll()) {
-      const errorCount = Object.values(fieldErrors).filter(Boolean).length || 1;
-      setSaveResult({ type: "error", text: `Please fix ${errorCount} validation error${errorCount > 1 ? "s" : ""} before saving` });
       toast.error("Please fix validation errors before saving");
       return;
     }
 
     setSaving(true);
-    setSaveResult(null);
     try {
       await onSubmit(draft);
-      setSaveResult({ type: "success", text: "Saved successfully" });
       toast.success("Form saved successfully");
       setShowErrors(false);
     } catch (err) {
       const msg = (err as Error).message;
-      setSaveResult({ type: "error", text: msg });
       toast.error(msg);
     } finally {
       setSaving(false);
     }
   };
+
+  // Ctrl+S to save
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault();
+        const form = document.querySelector<HTMLFormElement>("form");
+        form?.requestSubmit();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   const hasTabs = schema.tabs && schema.tabs.length > 0;
 
@@ -137,11 +142,11 @@ export function FormRenderer({ schema, values, timestamps, previousValues, onSub
   );
 
   return (
-    <Card>
+    <Card className="border-t-2 border-t-racing">
       <CardHeader>
         <CardTitle>{schema.form_name}</CardTitle>
         <CardDescription>
-          Fill out the fields below and save your changes.
+          Fill out the fields below and press Save (or <kbd className="rounded border bg-muted px-1 py-0.5 font-mono text-[10px]">Ctrl S</kbd>) to submit.
           {schema.fields.some((f) => f.required) && (
             <span className="text-destructive ml-1">* indicates required fields</span>
           )}
@@ -181,7 +186,7 @@ export function FormRenderer({ schema, values, timestamps, previousValues, onSub
           )}
 
           <div className="flex items-center gap-3 pt-2">
-            <Button type="submit" disabled={saving}>
+            <Button type="submit" disabled={saving} title="Save (Ctrl+S)" className="bg-racing hover:bg-racing-hover text-white">
               {saving ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
@@ -189,17 +194,9 @@ export function FormRenderer({ schema, values, timestamps, previousValues, onSub
               )}
               {saving ? "Saving..." : "Save"}
             </Button>
-            {saveResult && (
-              <p
-                className={`text-sm ${
-                  saveResult.type === "success"
-                    ? "text-green-600 dark:text-green-400"
-                    : "text-destructive"
-                }`}
-              >
-                {saveResult.text}
-              </p>
-            )}
+            <span className="hidden sm:inline text-xs text-muted-foreground">
+              <kbd className="rounded border bg-muted px-1 py-0.5 font-mono text-[10px]">Ctrl S</kbd>
+            </span>
           </div>
         </form>
       </CardContent>

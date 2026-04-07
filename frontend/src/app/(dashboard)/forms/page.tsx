@@ -29,9 +29,9 @@ export default function FormsPage() {
   if (!forms || forms.length === 0) {
     return (
       <EmptyState
-        icon={<ClipboardList className="h-12 w-12" />}
+        icon={<ClipboardList className="h-12 w-12" aria-hidden="true" />}
         title="No forms available"
-        description="You don't have access to any forms."
+        description="Your account doesn't have any form roles assigned. Ask your admin to add you to a subteam."
       />
     );
   }
@@ -51,8 +51,8 @@ export default function FormsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Forms</h1>
-        <p className="text-muted-foreground">
+        <h1 className="font-heading text-3xl font-extrabold uppercase tracking-wide">Forms</h1>
+        <p className="text-sm text-muted-foreground">
           View and edit your subteam forms.
         </p>
       </div>

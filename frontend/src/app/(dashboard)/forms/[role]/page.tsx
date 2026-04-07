@@ -29,7 +29,7 @@ export default function FormByRolePage({
       <EmptyState
         icon={<ClipboardList className="h-12 w-12" />}
         title="Form not found"
-        description={`No form found for role "${role}".`}
+        description={`There's no form configured for the "${role}" role. It may have been removed or renamed.`}
       />
     );
   }
@@ -47,8 +47,8 @@ export default function FormByRolePage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">{form.form_name}</h1>
-        <p className="text-muted-foreground">
+        <h1 className="font-heading text-3xl font-extrabold uppercase tracking-wide">{form.form_name}</h1>
+        <p className="text-sm text-muted-foreground">
           Fill out and save the form below.
         </p>
       </div>

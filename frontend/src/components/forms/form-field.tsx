@@ -51,18 +51,25 @@ function StalenessIndicator({ timestamp, validityWindow }: { timestamp: number; 
   let color: string;
   let label: string;
   if (ratio <= 0.5) {
-    color = "bg-green-500";
+    color = "bg-status-success";
     label = "Fresh";
   } else if (ratio <= 1) {
-    color = "bg-yellow-500";
+    color = "bg-status-warning";
     label = "Aging";
   } else {
-    color = "bg-red-500";
+    color = "bg-destructive";
     label = "Stale";
   }
 
+  const windowLabel = validityWindow >= 3600
+    ? `${Math.round(validityWindow / 3600)}h`
+    : `${Math.round(validityWindow / 60)}m`;
+
   return (
-    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+    <span
+      className="inline-flex items-center gap-1 text-xs text-muted-foreground"
+      title={`Data freshness — this value should be updated within ${windowLabel}. ${label === "Stale" ? "Consider re-checking this measurement." : ""}`}
+    >
       <span className={`inline-block h-2 w-2 rounded-full ${color}`} />
       {label} ({formatTimeAgo(timestamp)})
     </span>
@@ -71,10 +78,16 @@ function StalenessIndicator({ timestamp, validityWindow }: { timestamp: number; 
 
 export function FormFieldComponent({ field, value, onChange, timestamp, previousValue, validityWindow, error }: Props) {
   const hasError = !!error;
+  const errorId = `${field.name}-error`;
   const hints = (
     <div className="flex flex-wrap gap-x-3 gap-y-0.5">
       {hasError && (
-        <span className="text-xs text-destructive font-medium">{error}</span>
+        <span id={errorId} className="text-xs text-destructive font-medium" role="alert">{error}</span>
+      )}
+      {field.inject && (
+        <span className="text-xs text-muted-foreground" title="This field can be auto-populated from Motec LDX log files">
+          Auto-filled from LDX
+        </span>
       )}
       {timestamp != null && validityWindow != null && (
         <StalenessIndicator timestamp={timestamp} validityWindow={validityWindow} />
@@ -83,7 +96,7 @@ export function FormFieldComponent({ field, value, onChange, timestamp, previous
         <span className="text-xs text-muted-foreground">Updated {formatTimeAgo(timestamp)}</span>
       )}
       {previousValue != null && (
-        <span className="text-xs text-muted-foreground">
+        <span className="text-xs text-muted-foreground" title="Value from the previous track session, shown for comparison">
           Previous run: {previousValue}{field.unit ? ` ${field.unit}` : ""}
         </span>
       )}
@@ -108,6 +121,7 @@ export function FormFieldComponent({ field, value, onChange, timestamp, previous
           maxLength={10000}
           className={errorClass}
           aria-invalid={hasError}
+          aria-describedby={hasError ? errorId : undefined}
         />
         {hints}
       </div>
@@ -122,7 +136,7 @@ export function FormFieldComponent({ field, value, onChange, timestamp, previous
           {field.required && <span className="text-destructive ml-1">*</span>}
         </Label>
         <Select value={value || undefined} onValueChange={onChange}>
-          <SelectTrigger id={field.name} className={errorClass} aria-invalid={hasError}>
+          <SelectTrigger id={field.name} className={errorClass} aria-invalid={hasError} aria-describedby={hasError ? errorId : undefined}>
             <SelectValue placeholder="Select..." />
           </SelectTrigger>
           <SelectContent>
@@ -147,12 +161,15 @@ export function FormFieldComponent({ field, value, onChange, timestamp, previous
       <Input
         id={field.name}
         type={field.type === "number" ? "number" : "text"}
+        inputMode={field.type === "number" ? "decimal" : undefined}
         value={value}
         placeholder={fieldPlaceholder(field)}
         onChange={(e) => onChange(e.target.value)}
+        onWheel={field.type === "number" ? (e) => (e.target as HTMLInputElement).blur() : undefined}
         maxLength={field.type === "number" ? undefined : 10000}
         className={errorClass}
         aria-invalid={hasError}
+        aria-describedby={hasError ? errorId : undefined}
       />
       {hints}
     </div>
