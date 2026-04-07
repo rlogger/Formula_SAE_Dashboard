@@ -92,9 +92,9 @@ export default function LdxPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">LDX Files</h1>
-        <p className="text-muted-foreground">
-          Manage LDX file watching and view processed files.
+        <h1 className="font-heading text-3xl font-extrabold uppercase tracking-wide">LDX Files</h1>
+        <p className="text-sm text-muted-foreground">
+          Motec LDX files contain logged telemetry data from track sessions. Import them here to backfill historical data, or set a watch directory so new files are automatically injected into the dashboard.
         </p>
       </div>
       <Card>

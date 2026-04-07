@@ -24,7 +24,7 @@ export function LdxFileTable({ files, onFileClick }: Props) {
       <EmptyState
         icon={<FolderOpen className="h-10 w-10" />}
         title="No LDX files found"
-        description="Set a watch directory to see LDX files."
+        description="Set a watch directory above to scan for Motec LDX log files. They'll appear here once detected."
       />
     );
   }
@@ -34,6 +34,7 @@ export function LdxFileTable({ files, onFileClick }: Props) {
       <TableHeader>
         <TableRow>
           <TableHead>Name</TableHead>
+          <TableHead>Comment</TableHead>
           <TableHead>Size</TableHead>
           <TableHead>Last Modified</TableHead>
         </TableRow>
@@ -46,6 +47,9 @@ export function LdxFileTable({ files, onFileClick }: Props) {
             onClick={() => onFileClick?.(file.name)}
           >
             <TableCell className="font-medium">{file.name}</TableCell>
+            <TableCell className="max-w-[200px] truncate text-muted-foreground">
+              {file.short_comment || "—"}
+            </TableCell>
             <TableCell>{formatSize(file.size)}</TableCell>
             <TableCell>{formatLocalTime(file.modified_at)}</TableCell>
           </TableRow>

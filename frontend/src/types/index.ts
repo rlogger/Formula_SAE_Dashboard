@@ -41,6 +41,7 @@ export type LdxFileInfo = {
   name: string;
   size: number;
   modified_at: string;
+  short_comment?: string | null;
 };
 
 export type PaginatedAuditLog = {
@@ -67,4 +68,17 @@ export type LdxReinjectResult = {
   created: number;
   updated: number;
   unchanged: number;
+};
+
+export type LdxDiffEntry = {
+  field_id: string;
+  current_value: string | null;
+  new_value: string;
+  changed: boolean;
+};
+
+export type LdxDiffResponse = {
+  file_name: string;
+  short_comment: string | null;
+  entries: LdxDiffEntry[];
 };

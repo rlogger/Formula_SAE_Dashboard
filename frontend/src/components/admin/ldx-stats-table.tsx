@@ -27,8 +27,8 @@ export function LdxStatsTable() {
     return (
       <EmptyState
         icon={<BarChart3 className="h-10 w-10" />}
-        title="No injection stats"
-        description="Stats will appear after LDX files are processed."
+        title="No injection stats yet"
+        description="When LDX files are processed, you'll see how many form fields each file injected or updated."
       />
     );
   }
