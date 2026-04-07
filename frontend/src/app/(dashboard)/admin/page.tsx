@@ -44,15 +44,12 @@ export default function AdminPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-heading text-3xl font-extrabold uppercase tracking-wide">Admin Dashboard</h1>
-        <p className="text-sm text-muted-foreground">
-          Manage users, view audit logs, and configure the system.
-        </p>
+        <h1 className="font-heading text-3xl font-extrabold uppercase tracking-wide">Admin</h1>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (
           <Link key={stat.href} href={stat.href}>
-            <Card className="transition-all hover:bg-racing-muted border-t-2 border-t-racing hover:shadow-md hover:shadow-racing/5">
+            <Card className="transition-colors hover:bg-racing-muted">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-sm font-medium">
                   {stat.label}

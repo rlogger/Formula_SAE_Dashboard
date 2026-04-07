@@ -74,23 +74,13 @@ export default function SensorsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-heading text-3xl font-extrabold uppercase tracking-wide">
-            Sensor Management
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Define the data channels (e.g. speed, RPM, throttle) that appear on the live telemetry dashboard. Each sensor maps to a value the car broadcasts.
-          </p>
-        </div>
-        <Button onClick={openCreate} className="bg-racing hover:bg-racing-hover text-white">
-          <Plus className="mr-2 h-4 w-4" />
-          Add Sensor
-        </Button>
-      </div>
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Sensors</CardTitle>
+          <Button size="sm" onClick={openCreate} className="bg-racing hover:bg-racing-hover text-white">
+            <Plus className="mr-2 h-4 w-4" />
+            Add Sensor
+          </Button>
         </CardHeader>
         <CardContent>
           <SensorTable

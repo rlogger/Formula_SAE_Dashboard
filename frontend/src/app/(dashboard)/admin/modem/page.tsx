@@ -211,15 +211,9 @@ export default function ModemPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-heading text-3xl font-extrabold uppercase tracking-wide">
-          Telemetry Configuration
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Configure serial modem and WiFi broadcast receiver for live Motec
-          telemetry. Choose a data source and adjust connection settings.
-        </p>
-      </div>
+      <h1 className="font-heading text-3xl font-extrabold uppercase tracking-wide">
+        Telemetry Configuration
+      </h1>
 
       {/* Combined Status Card */}
       <Card>

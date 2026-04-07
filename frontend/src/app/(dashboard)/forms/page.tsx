@@ -50,12 +50,6 @@ export default function FormsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-heading text-3xl font-extrabold uppercase tracking-wide">Forms</h1>
-        <p className="text-sm text-muted-foreground">
-          View and edit your subteam forms.
-        </p>
-      </div>
       <FormSelector
         forms={forms}
         activeRole={activeRole}

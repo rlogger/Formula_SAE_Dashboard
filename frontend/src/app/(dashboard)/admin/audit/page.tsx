@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useAuditLog } from "@/hooks/use-audit-log";
 import { AuditLogTable } from "@/components/admin/audit-log-table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
 
 const PAGE_SIZE = 20;
@@ -17,18 +17,10 @@ export default function AuditPage() {
   const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / PAGE_SIZE));
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="font-heading text-3xl font-extrabold uppercase tracking-wide">Audit Log</h1>
-        <p className="text-sm text-muted-foreground">
-          Track all form changes across the team. Every field edit is recorded with who changed it and when.
-        </p>
-      </div>
+    <div className="space-y-4">
+      <h1 className="font-heading text-3xl font-extrabold uppercase tracking-wide">Audit Log</h1>
       <Card>
-        <CardHeader>
-          <CardTitle>Recent Changes</CardTitle>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           <AuditLogTable
             logs={data?.items ?? []}
             page={page}

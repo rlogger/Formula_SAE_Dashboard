@@ -46,12 +46,6 @@ export default function FormByRolePage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-heading text-3xl font-extrabold uppercase tracking-wide">{form.form_name}</h1>
-        <p className="text-sm text-muted-foreground">
-          Fill out and save the form below.
-        </p>
-      </div>
       <FormRenderer
         schema={form}
         values={valuesData?.values || {}}
