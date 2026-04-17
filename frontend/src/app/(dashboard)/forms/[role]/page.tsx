@@ -34,11 +34,17 @@ export default function FormByRolePage({
     );
   }
 
-  const handleSubmit = async (values: Record<string, string | null>) => {
+  const handleSubmit = async (
+    values: Record<string, string | null>,
+    previousLdxTargets: Record<string, "previous" | "current">,
+  ) => {
     if (!token) return;
     await apiFetch(
       `/forms/${role}/submit`,
-      { method: "POST", body: JSON.stringify({ values }) },
+      {
+        method: "POST",
+        body: JSON.stringify({ values, previous_ldx_targets: previousLdxTargets }),
+      },
       token
     );
     mutateValues();
@@ -51,6 +57,7 @@ export default function FormByRolePage({
         values={valuesData?.values || {}}
         timestamps={valuesData?.timestamps}
         previousValues={valuesData?.previous_values}
+        previousLdxName={valuesData?.previous_ldx_name ?? null}
         onSubmit={handleSubmit}
       />
     </div>

@@ -19,6 +19,8 @@ class FormField(BaseModel):
     tab: Optional[str] = None
     lookback: bool = False
     validity_window: Optional[int] = None
+    admin_only: bool = False
+    previous_ldx: bool = False
 
 
 class FormSchema(BaseModel):
@@ -26,6 +28,7 @@ class FormSchema(BaseModel):
     role: str
     fields: List[FormField]
     tabs: Optional[List[str]] = None
+    admin_only: bool = False
 
 
 FORMS_DIR = Path(os.getenv("FORMS_DIR", Path(__file__).resolve().parent.parent / "forms"))

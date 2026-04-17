@@ -17,6 +17,8 @@ export type FormField = {
   tab?: string;
   lookback?: boolean;
   validity_window?: number;
+  admin_only?: boolean;
+  previous_ldx?: boolean;
 };
 
 export type FormSchema = {
@@ -24,6 +26,7 @@ export type FormSchema = {
   role: string;
   fields: FormField[];
   tabs?: string[];
+  admin_only?: boolean;
 };
 
 export type AuditLog = {

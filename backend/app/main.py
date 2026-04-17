@@ -31,7 +31,10 @@ from .forms import FormSchema, get_form_by_role, list_roles, load_forms
 from .ldx_watcher import (
     LdxWatcher,
     compute_pending_injection_entries,
+    find_most_recent_ldx_file,
     get_watch_directory,
+    inject_field_into_ldx,
+    inject_selected_fields_into_ldx,
     inject_values_into_ldx,
     reinject_logged_values_into_ldx,
     set_watch_directory,
@@ -163,10 +166,12 @@ class FormValuesResponse(BaseModel):
     values: Dict[str, Optional[str]]
     timestamps: Dict[str, float] = {}
     previous_values: Dict[str, Optional[str]] = {}
+    previous_ldx_name: Optional[str] = None
 
 
 class FormSubmit(BaseModel):
     values: Dict[str, Optional[str]]
+    previous_ldx_targets: Dict[str, str] = {}
 
     @field_validator("values")
     @classmethod
@@ -176,6 +181,15 @@ class FormSubmit(BaseModel):
         for key, val in v.items():
             if val is not None and len(val) > MAX_FIELD_VALUE_LENGTH:
                 raise ValueError(f"Value for '{key}' exceeds maximum length of {MAX_FIELD_VALUE_LENGTH} characters")
+        return v
+
+    @field_validator("previous_ldx_targets")
+    @classmethod
+    def validate_targets(cls, v: Dict[str, str]) -> Dict[str, str]:
+        valid = {"previous", "current"}
+        for field_name, target in v.items():
+            if target not in valid:
+                raise ValueError(f"Target for '{field_name}' must be one of: {', '.join(sorted(valid))}")
         return v
 
 
@@ -419,6 +433,7 @@ def get_form_values(role: str, current_user: User = Depends(get_current_user)) -
         raise HTTPException(status_code=404, detail="Form not found")
 
     lookback_fields = {f.name for f in form.fields if f.lookback}
+    has_previous_ldx_field = any(f.previous_ldx for f in form.fields)
 
     with Session(engine) as session:
         values = session.exec(
@@ -428,15 +443,16 @@ def get_form_values(role: str, current_user: User = Depends(get_current_user)) -
         ts_map = {v.field_name: v.updated_at.timestamp() for v in values}
 
         prev_map: Dict[str, Optional[str]] = {}
-        if lookback_fields:
-            # Find the most recent processed run
+        last_run: Optional[LdxFile] = None
+        if lookback_fields or has_previous_ldx_field:
             last_run = session.exec(
                 select(LdxFile)
                 .order_by(LdxFile.processed_at.desc())
                 .limit(1)
             ).first()
+
+        if lookback_fields:
             last_run_time = last_run.processed_at if last_run else None
-            # SQLite drops tzinfo — treat as UTC
             if last_run_time and last_run_time.tzinfo is None:
                 last_run_time = last_run_time.replace(tzinfo=timezone.utc)
 
@@ -444,7 +460,6 @@ def get_form_values(role: str, current_user: User = Depends(get_current_user)) -
                 if not last_run_time:
                     prev_map[field_name] = None
                     continue
-                # Value at the time of the last run
                 prev_audit = session.exec(
                     select(AuditLog)
                     .where(
@@ -457,10 +472,13 @@ def get_form_values(role: str, current_user: User = Depends(get_current_user)) -
                 ).first()
                 prev_map[field_name] = prev_audit.new_value if prev_audit else None
 
+        previous_ldx_name = Path(last_run.path).name if last_run else None
+
         return FormValuesResponse(
             values=value_map,
             timestamps=ts_map,
             previous_values=prev_map,
+            previous_ldx_name=previous_ldx_name,
         )
 
 
@@ -484,7 +502,7 @@ def _validate_field_value(field_schema: "FormField", value: Optional[str]) -> Li
 
 
 @app.post("/forms/{role}/submit")
-def submit_form(role: str, payload: FormSubmit, current_user: User = Depends(get_current_user)) -> Dict[str, str]:
+def submit_form(role: str, payload: FormSubmit, current_user: User = Depends(get_current_user)) -> Dict[str, Optional[str]]:
     _ensure_access(role, current_user)
     form = get_form_by_role(role)
     if not form:
@@ -505,8 +523,26 @@ def submit_form(role: str, payload: FormSubmit, current_user: User = Depends(get
     if validation_errors:
         raise HTTPException(status_code=422, detail="; ".join(validation_errors))
 
+    for field_name in payload.previous_ldx_targets.keys():
+        if field_name not in field_map:
+            raise HTTPException(status_code=400, detail=f"Unknown field in previous_ldx_targets: '{field_name}'")
+        if not field_map[field_name].previous_ldx:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Field '{field_name}' does not support previous_ldx targeting",
+            )
+        effective_admin_only = form.admin_only or field_map[field_name].admin_only
+        if effective_admin_only and not current_user.is_admin and payload.previous_ldx_targets[field_name] == "previous":
+            raise HTTPException(
+                status_code=403,
+                detail=f"Only admins can apply '{field_name}' retroactively to the previous LDX file",
+            )
+
+    previous_injected_file: Optional[str] = None
+
     with Session(engine) as session:
         now = datetime.now(timezone.utc)
+        previous_targets: List[tuple[str, str]] = []  # (field_name, new_value) to apply retroactively
         for field_name, new_value in payload.values.items():
             current = session.exec(
                 select(FormValue).where(
@@ -516,6 +552,12 @@ def submit_form(role: str, payload: FormSubmit, current_user: User = Depends(get
             ).first()
             new_value_str = "" if new_value is None else str(new_value)
             old_value = current.value if current else None
+            target = payload.previous_ldx_targets.get(field_name, "current")
+
+            if target == "previous":
+                previous_targets.append((field_name, new_value_str))
+                continue
+
             if current:
                 if current.value != new_value_str:
                     current.value = new_value_str
@@ -542,8 +584,38 @@ def submit_form(role: str, payload: FormSubmit, current_user: User = Depends(get
                         changed_by=current_user.id,
                     )
                 )
+
+        if previous_targets:
+            most_recent = find_most_recent_ldx_file(session)
+            if most_recent is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No previous LDX file exists — cannot apply retroactively",
+                )
+            ldx_path = Path(most_recent.path)
+            if not ldx_path.exists():
+                raise HTTPException(
+                    status_code=404,
+                    detail="Previous LDX file is no longer on disk",
+                )
+            for field_name, value in previous_targets:
+                inject_field_into_ldx(
+                    session=session,
+                    path=ldx_path,
+                    form_name=form.form_name,
+                    field_name=field_name,
+                    value=value,
+                    injected_at=now,
+                )
+            try:
+                most_recent.mtime = ldx_path.stat().st_mtime
+                session.add(most_recent)
+            except OSError:
+                pass
+            previous_injected_file = ldx_path.name
+
         session.commit()
-    return {"status": "saved"}
+    return {"status": "saved", "previous_injected_file": previous_injected_file}
 
 
 class PaginatedAuditLogResponse(BaseModel):
@@ -755,18 +827,78 @@ def reinject_ldx_file(
     )
 
 
+class ReprocessFieldRef(BaseModel):
+    form_name: str
+    field_name: str
+
+
+class ReprocessRequest(BaseModel):
+    fields: Optional[List[ReprocessFieldRef]] = None  # None = all (legacy); [] = none
+
+
 @app.post(
     "/admin/ldx-files/{file_name}/reprocess",
     response_model=LdxReinjectResponse,
 )
 def reprocess_ldx_file(
-    file_name: str, _: User = Depends(require_admin)
+    file_name: str,
+    payload: Optional[ReprocessRequest] = None,
+    _: User = Depends(require_admin),
 ) -> LdxReinjectResponse:
-    """Clear existing injection record and re-inject current form values from scratch."""
+    """Re-inject selected form fields into an existing LDX file.
+
+    If `fields` is provided: inject only those (form_name, field_name) pairs, appending to
+    existing InjectionLog. Leaves other fields in the XML and their history untouched.
+
+    If `fields` is omitted entirely (legacy): full reprocess — clears all InjectionLog and
+    LdxFile record, then re-injects every current FormValue from scratch.
+    """
     path = _resolve_ldx_file_path(file_name)
     detection_time = datetime.now(timezone.utc)
 
     with Session(engine) as session:
+        if payload is not None and payload.fields is not None:
+            selected = [(f.form_name, f.field_name) for f in payload.fields]
+            if not selected:
+                raise HTTPException(status_code=400, detail="No fields selected")
+
+            forms_by_name = {f.form_name: f for f in load_forms()}
+            for form_name, field_name in selected:
+                form = forms_by_name.get(form_name)
+                if form is None:
+                    raise HTTPException(status_code=400, detail=f"Unknown form: '{form_name}'")
+                field = next((fld for fld in form.fields if fld.name == field_name), None)
+                if field is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Unknown field '{field_name}' in form '{form_name}'",
+                    )
+
+            summary = inject_selected_fields_into_ldx(
+                session=session,
+                path=path,
+                selected_fields=selected,
+                detection_time=detection_time,
+            )
+
+            record = session.exec(
+                select(LdxFile).where(LdxFile.path == str(path))
+            ).first()
+            if record:
+                try:
+                    record.mtime = path.stat().st_mtime
+                except OSError:
+                    pass
+                session.add(record)
+            session.commit()
+
+            return LdxReinjectResponse(
+                file_name=file_name,
+                created=summary.created,
+                updated=summary.updated,
+                unchanged=summary.unchanged,
+            )
+
         record = session.exec(
             select(LdxFile).where(LdxFile.path == str(path))
         ).first()

@@ -8,6 +8,7 @@ type FormValuesResponse = {
   values: Record<string, string | null>;
   timestamps: Record<string, number>;
   previous_values: Record<string, string | null>;
+  previous_ldx_name: string | null;
 };
 
 export function useFormValues(role: string | null) {

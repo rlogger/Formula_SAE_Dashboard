@@ -5,7 +5,11 @@ fields:
     label: "Fuel Added"
     type: "number"
     unit: "lbs"
-    lookback: true
+  - name: "fuel_used"
+    label: "Fuel Used"
+    type: "number"
+    unit: "lbs"
+    previous_ldx: true
   - name: "sound"
     label: "Sound"
     type: "number"

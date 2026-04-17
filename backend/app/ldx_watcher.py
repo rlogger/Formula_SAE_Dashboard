@@ -758,6 +758,179 @@ def compute_pending_injection_entries(session: Session) -> List[InjectionEntry]:
     return entries
 
 
+def _resolve_field_id(
+    form_name: str,
+    field_name: str,
+    existing_string_ids: set,
+    existing_math_names: set,
+    other_form_field_names: set,
+    form_name_to_role: Dict[str, str],
+) -> str:
+    human_field = _to_human(field_name)
+    if field_name == "notes":
+        role = form_name_to_role.get(form_name, form_name)
+        return f"{role}.notes"
+    has_conflict = (
+        human_field in other_form_field_names
+        or human_field in existing_string_ids
+        or human_field in existing_math_names
+    )
+    if has_conflict:
+        return f"{_to_human(form_name)} {human_field}"
+    return human_field
+
+
+def find_most_recent_ldx_file(session: Session) -> Optional[LdxFile]:
+    return session.exec(
+        select(LdxFile).order_by(LdxFile.processed_at.desc()).limit(1)
+    ).first()
+
+
+def inject_field_into_ldx(
+    session: Session,
+    path: Path,
+    form_name: str,
+    field_name: str,
+    value: str,
+    injected_at: datetime,
+) -> ApplySummary:
+    """Inject a single (form_name, field_name, value) into the given LDX file."""
+    form_name_to_role, field_lookup = _build_lookup_tables()
+    schema_field = field_lookup.get(f"{form_name}.{field_name}")
+    field_type = schema_field.type if schema_field else "text"
+    field_unit = (schema_field.unit or "") if schema_field else ""
+    entry_type = _MATH_ENTRY_TYPE if field_type in _MATH_TYPES else _STRING_ENTRY_TYPE
+
+    tree = ElementTree.parse(path)
+    root = tree.getroot()
+    details, math_constants = _ensure_ldx_targets(root)
+
+    existing_string_ids = set(_string_entries_by_id(details))
+    existing_math_names = set(_math_entries_by_name(math_constants))
+
+    human_field = _to_human(field_name)
+    other_form_field_names: set = set()
+    for other_values in session.exec(select(FormValue)).all():
+        if other_values.form_name == form_name and other_values.field_name == field_name:
+            continue
+        if _to_human(other_values.field_name) == human_field:
+            other_form_field_names.add(human_field)
+            break
+
+    final_id = _resolve_field_id(
+        form_name,
+        field_name,
+        existing_string_ids,
+        existing_math_names,
+        other_form_field_names,
+        form_name_to_role,
+    )
+
+    entry = InjectionEntry(
+        field_id=final_id,
+        value=value,
+        entry_type=entry_type,
+        unit=field_unit,
+        form_name=form_name,
+    )
+
+    return _apply_injection_entries_to_tree(
+        path=path,
+        tree=tree,
+        root=root,
+        details=details,
+        math_constants=math_constants,
+        session=session,
+        entries=[entry],
+        injected_at=injected_at,
+        log_when_unchanged=False,
+    )
+
+
+def inject_selected_fields_into_ldx(
+    session: Session,
+    path: Path,
+    selected_fields: List[Tuple[str, str]],
+    detection_time: datetime,
+) -> ApplySummary:
+    """Inject current FormValue for specific (form_name, field_name) pairs into an existing LDX.
+
+    Used by reprocess-with-selection: updates XML and appends InjectionLog entries only for
+    selected fields. Leaves all other fields in the XML and existing InjectionLog rows untouched.
+    """
+    if not selected_fields:
+        return ApplySummary()
+
+    form_name_to_role, field_lookup = _build_lookup_tables()
+
+    tree = ElementTree.parse(path)
+    root = tree.getroot()
+    details, math_constants = _ensure_ldx_targets(root)
+
+    existing_string_ids = set(_string_entries_by_id(details))
+    existing_math_names = set(_math_entries_by_name(math_constants))
+
+    selected_set = {(fn, fld) for fn, fld in selected_fields}
+    current_values: Dict[Tuple[str, str], str] = {}
+    for fv in session.exec(select(FormValue)).all():
+        key = (fv.form_name, fv.field_name)
+        if key not in selected_set:
+            continue
+        prior = current_values.get(key)
+        if prior is None:
+            current_values[key] = fv.value
+
+    human_conflict_names: set = set()
+    human_to_forms: Dict[str, set] = {}
+    for fn, fld in selected_fields:
+        human_to_forms.setdefault(_to_human(fld), set()).add(fn)
+    for human, forms in human_to_forms.items():
+        if len(forms) > 1:
+            human_conflict_names.add(human)
+
+    entries: List[InjectionEntry] = []
+    for form_name, field_name in selected_fields:
+        key = (form_name, field_name)
+        if key not in current_values:
+            continue
+        value = current_values[key]
+        schema_field = field_lookup.get(f"{form_name}.{field_name}")
+        field_type = schema_field.type if schema_field else "text"
+        field_unit = (schema_field.unit or "") if schema_field else ""
+        entry_type = _MATH_ENTRY_TYPE if field_type in _MATH_TYPES else _STRING_ENTRY_TYPE
+
+        final_id = _resolve_field_id(
+            form_name,
+            field_name,
+            existing_string_ids,
+            existing_math_names,
+            human_conflict_names,
+            form_name_to_role,
+        )
+
+        entries.append(
+            InjectionEntry(
+                field_id=final_id,
+                value=value,
+                entry_type=entry_type,
+                unit=field_unit,
+                form_name=form_name,
+            )
+        )
+
+    return _apply_injection_entries_to_tree(
+        path=path,
+        tree=tree,
+        root=root,
+        details=details,
+        math_constants=math_constants,
+        session=session,
+        entries=entries,
+        injected_at=detection_time,
+        log_when_unchanged=False,
+    )
+
+
 def reinject_logged_values_into_ldx(
     path: Path,
     session: Session,

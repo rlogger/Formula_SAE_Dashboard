@@ -1,5 +1,6 @@
 form_name: "Suspension"
 role: "suspension"
+admin_only: true
 tabs:
   - "Damper"
   - "CCT"

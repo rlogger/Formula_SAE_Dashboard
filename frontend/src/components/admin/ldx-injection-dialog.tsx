@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
+import { useForms } from "@/hooks/use-forms";
 import { InjectionLogEntry, LdxReinjectResult, LdxDiffResponse } from "@/types";
 import { formatLocalTime } from "@/lib/utils";
 import {
@@ -14,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
@@ -25,7 +27,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
-import { FileText, GitCompare, RefreshCw, RotateCcw } from "lucide-react";
+import { FileText, GitCompare, ListChecks, RefreshCw, RotateCcw } from "lucide-react";
 
 type Props = {
   fileName: string | null;
@@ -39,10 +41,19 @@ function toFormLabel(formName: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+type SelectedField = { form_name: string; field_name: string };
+
+function fieldKey(form_name: string, field_name: string): string {
+  return `${form_name}::${field_name}`;
+}
+
 export function LdxInjectionDialog({ fileName, onClose, onReinjected }: Props) {
   const { token } = useAuth();
   const [isReinjecting, setIsReinjecting] = useState(false);
   const [isReprocessing, setIsReprocessing] = useState(false);
+  const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set());
+
+  const { data: forms } = useForms();
 
   const { data: injections, mutate } = useSWR<InjectionLogEntry[]>(
     fileName && token
@@ -84,19 +95,25 @@ export function LdxInjectionDialog({ fileName, onClose, onReinjected }: Props) {
     }
   };
 
-  const handleReprocess = async () => {
+  const handleReprocess = async (fields?: SelectedField[]) => {
     if (!fileName || !token) return;
     setIsReprocessing(true);
     try {
+      const init: { method: string; body?: string } = { method: "POST" };
+      if (fields && fields.length > 0) {
+        init.body = JSON.stringify({ fields });
+      }
       const result = await apiFetch<LdxReinjectResult>(
         `/admin/ldx-files/${encodeURIComponent(fileName)}/reprocess`,
-        { method: "POST" },
+        init,
         token
       );
       const total = result.created + result.updated + result.unchanged;
+      const label = fields && fields.length > 0 ? `${fields.length} selected field${fields.length === 1 ? "" : "s"}` : "current forms";
       toast.success(
-        `Reprocessed ${fileName} — ${total} value${total === 1 ? "" : "s"} from current forms`
+        `Reprocessed ${fileName} — ${total} value${total === 1 ? "" : "s"} from ${label}`
       );
+      setSelectedFields(new Set());
       await mutate();
       await mutateDiff();
       onReinjected?.();
@@ -106,6 +123,40 @@ export function LdxInjectionDialog({ fileName, onClose, onReinjected }: Props) {
       setIsReprocessing(false);
     }
   };
+
+  const toggleField = (form_name: string, field_name: string) => {
+    setSelectedFields((prev) => {
+      const next = new Set(prev);
+      const k = fieldKey(form_name, field_name);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+  };
+
+  const toggleFormAll = (form_name: string, field_names: string[], shouldSelect: boolean) => {
+    setSelectedFields((prev) => {
+      const next = new Set(prev);
+      for (const fn of field_names) {
+        const k = fieldKey(form_name, fn);
+        if (shouldSelect) next.add(k);
+        else next.delete(k);
+      }
+      return next;
+    });
+  };
+
+  const selectedList = useMemo<SelectedField[]>(() => {
+    return Array.from(selectedFields).map((k) => {
+      const [form_name, field_name] = k.split("::");
+      return { form_name, field_name };
+    });
+  }, [selectedFields]);
+
+  const reprocessableForms = useMemo(() => {
+    if (!forms) return [];
+    return forms.filter((f) => f.fields.length > 0);
+  }, [forms]);
 
   const changedCount = diff?.entries.filter((e) => e.changed).length ?? 0;
   const busy = isReinjecting || isReprocessing;
@@ -146,19 +197,20 @@ export function LdxInjectionDialog({ fileName, onClose, onReinjected }: Props) {
               <Button
                 type="button"
                 size="sm"
-                onClick={handleReprocess}
+                onClick={() => handleReprocess()}
                 disabled={!fileName || busy}
                 className="bg-racing hover:bg-racing-hover text-white"
                 title="Re-inject using latest form values — clears and replaces previous history"
               >
                 <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-                {isReprocessing ? "Reprocessing…" : "Reprocess"}
+                {isReprocessing ? "Reprocessing…" : "Reprocess All"}
               </Button>
             </div>
           </div>
           <p className="text-xs text-muted-foreground mt-2">
             <strong>Restore</strong> replays the logged values from first processing.{" "}
-            <strong>Reprocess</strong> re-injects using the latest form values and replaces history.
+            <strong>Reprocess All</strong> replaces history using the latest form values.{" "}
+            Use the <strong>Fields</strong> tab to reprocess only specific fields.
           </p>
         </DialogHeader>
 
@@ -170,6 +222,15 @@ export function LdxInjectionDialog({ fileName, onClose, onReinjected }: Props) {
               {changedCount > 0 && (
                 <Badge variant="default" className="ml-2 bg-racing text-white text-[10px] px-1.5 py-0">
                   {changedCount}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="fields">
+              <ListChecks className="mr-2 h-4 w-4" />
+              Fields
+              {selectedFields.size > 0 && (
+                <Badge variant="default" className="ml-2 bg-racing text-white text-[10px] px-1.5 py-0">
+                  {selectedFields.size}
                 </Badge>
               )}
             </TabsTrigger>
@@ -224,6 +285,111 @@ export function LdxInjectionDialog({ fileName, onClose, onReinjected }: Props) {
                 description="Every stored value already matches what's in the file."
               />
             ) : null}
+          </TabsContent>
+
+          <TabsContent value="fields">
+            {reprocessableForms.length > 0 ? (
+              <div className="space-y-4">
+                <p className="text-xs text-muted-foreground">
+                  Select fields to re-inject with their latest values. Unselected fields keep their existing injection history and XML values.
+                </p>
+                <div className="space-y-3">
+                  {reprocessableForms.map((form) => {
+                    const allFieldNames = form.fields.map((f) => f.name);
+                    const selectedInForm = allFieldNames.filter((fn) =>
+                      selectedFields.has(fieldKey(form.form_name, fn))
+                    );
+                    const allChecked = selectedInForm.length === allFieldNames.length;
+                    const someChecked = selectedInForm.length > 0 && !allChecked;
+                    return (
+                      <div key={form.form_name} className="rounded-md border p-3">
+                        <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b">
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              id={`form-${form.form_name}`}
+                              checked={allChecked ? true : someChecked ? "indeterminate" : false}
+                              onCheckedChange={(checked) =>
+                                toggleFormAll(form.form_name, allFieldNames, checked === true)
+                              }
+                            />
+                            <label
+                              htmlFor={`form-${form.form_name}`}
+                              className="text-sm font-semibold cursor-pointer"
+                            >
+                              {toFormLabel(form.form_name)}
+                            </label>
+                            {form.admin_only && (
+                              <Badge variant="outline" className="text-[10px]">Admin</Badge>
+                            )}
+                          </div>
+                          <span className="text-[11px] text-muted-foreground">
+                            {selectedInForm.length} / {allFieldNames.length}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                          {form.fields.map((field) => {
+                            const k = fieldKey(form.form_name, field.name);
+                            const checked = selectedFields.has(k);
+                            return (
+                              <label
+                                key={field.name}
+                                htmlFor={`field-${form.form_name}-${field.name}`}
+                                className="flex items-center gap-2 text-sm cursor-pointer rounded px-2 py-1 hover:bg-muted/50"
+                              >
+                                <Checkbox
+                                  id={`field-${form.form_name}-${field.name}`}
+                                  checked={checked}
+                                  onCheckedChange={() => toggleField(form.form_name, field.name)}
+                                />
+                                <span className="truncate">{field.label}</span>
+                                {field.unit && (
+                                  <span className="text-[11px] text-muted-foreground shrink-0">
+                                    ({field.unit})
+                                  </span>
+                                )}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center justify-between gap-2 pt-2 border-t sticky bottom-0 bg-background">
+                  <span className="text-xs text-muted-foreground">
+                    {selectedFields.size} field{selectedFields.size === 1 ? "" : "s"} selected
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setSelectedFields(new Set())}
+                      disabled={selectedFields.size === 0 || busy}
+                    >
+                      Clear
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => handleReprocess(selectedList)}
+                      disabled={selectedFields.size === 0 || busy}
+                      className="bg-racing hover:bg-racing-hover text-white"
+                      title="Re-inject only selected fields, preserving history for the rest"
+                    >
+                      <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                      {isReprocessing ? "Reprocessing…" : "Reprocess Selected"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <EmptyState
+                icon={<ListChecks className="h-10 w-10" />}
+                title="No forms loaded"
+                description="Form definitions are still loading or unavailable."
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="history">

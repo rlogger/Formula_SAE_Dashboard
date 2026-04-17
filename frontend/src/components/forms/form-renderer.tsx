@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FormFieldComponent } from "./form-field";
+import { PreviousLdxDialog, PreviousLdxChoice } from "./previous-ldx-dialog";
+import { useAuth } from "@/hooks/use-auth";
 import { AlertCircle, Loader2, Save } from "lucide-react";
 
 type Props = {
@@ -20,7 +22,11 @@ type Props = {
   values: Record<string, string | null>;
   timestamps?: Record<string, number>;
   previousValues?: Record<string, string | null>;
-  onSubmit: (values: Record<string, string | null>) => Promise<void>;
+  previousLdxName?: string | null;
+  onSubmit: (
+    values: Record<string, string | null>,
+    previousLdxTargets: Record<string, PreviousLdxChoice>,
+  ) => Promise<void>;
 };
 
 function validateField(field: FormField, value: string | null): string | null {
@@ -42,11 +48,15 @@ function validateField(field: FormField, value: string | null): string | null {
   return null;
 }
 
-export function FormRenderer({ schema, values, timestamps, previousValues, onSubmit }: Props) {
+export function FormRenderer({ schema, values, timestamps, previousValues, previousLdxName, onSubmit }: Props) {
+  const { user } = useAuth();
   const [draft, setDraft] = useState<Record<string, string | null>>(values);
   const [saving, setSaving] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({});
   const [showErrors, setShowErrors] = useState(false);
+  const [pendingPreviousLdxFields, setPendingPreviousLdxFields] = useState<
+    Array<{ field: FormField; oldValue: string | null | undefined; newValue: string }>
+  >([]);
 
   useEffect(() => {
     setDraft(values);
@@ -79,6 +89,26 @@ export function FormRenderer({ schema, values, timestamps, previousValues, onSub
     return !hasError;
   }, [schema.fields, draft]);
 
+  const submitDraft = useCallback(
+    async (
+      valuesToSubmit: Record<string, string | null>,
+      previousLdxTargets: Record<string, PreviousLdxChoice>,
+    ) => {
+      setSaving(true);
+      try {
+        await onSubmit(valuesToSubmit, previousLdxTargets);
+        toast.success("Form saved successfully");
+        setShowErrors(false);
+      } catch (err) {
+        const msg = (err as Error).message;
+        toast.error(msg);
+      } finally {
+        setSaving(false);
+      }
+    },
+    [onSubmit],
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setShowErrors(true);
@@ -88,17 +118,30 @@ export function FormRenderer({ schema, values, timestamps, previousValues, onSub
       return;
     }
 
-    setSaving(true);
-    try {
-      await onSubmit(draft);
-      toast.success("Form saved successfully");
-      setShowErrors(false);
-    } catch (err) {
-      const msg = (err as Error).message;
-      toast.error(msg);
-    } finally {
-      setSaving(false);
+    const changedPreviousLdxFields = schema.fields
+      .filter((f) => f.previous_ldx)
+      .flatMap((f) => {
+        const newValue = (draft[f.name] ?? "").toString();
+        const oldValue = values[f.name] ?? "";
+        if (newValue === "" || newValue === oldValue) return [];
+        return [{ field: f, oldValue: values[f.name], newValue }];
+      });
+
+    if (changedPreviousLdxFields.length > 0 && previousLdxName) {
+      setPendingPreviousLdxFields(changedPreviousLdxFields);
+      return;
     }
+
+    await submitDraft(draft, {});
+  };
+
+  const handlePreviousLdxConfirm = async (choices: Record<string, PreviousLdxChoice>) => {
+    setPendingPreviousLdxFields([]);
+    await submitDraft(draft, choices);
+  };
+
+  const handlePreviousLdxCancel = () => {
+    setPendingPreviousLdxFields([]);
   };
 
   // Ctrl+S to save
@@ -200,6 +243,16 @@ export function FormRenderer({ schema, values, timestamps, previousValues, onSub
           </div>
         </form>
       </CardContent>
+
+      <PreviousLdxDialog
+        open={pendingPreviousLdxFields.length > 0}
+        fields={pendingPreviousLdxFields}
+        previousLdxName={previousLdxName ?? null}
+        isAdmin={user?.is_admin ?? false}
+        formAdminOnly={schema.admin_only ?? false}
+        onCancel={handlePreviousLdxCancel}
+        onConfirm={handlePreviousLdxConfirm}
+      />
     </Card>
   );
 }
