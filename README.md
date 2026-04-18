@@ -110,11 +110,6 @@ FastAPI server.
 
 Log in with the admin credentials defined in your backend environment.
 
-### Optional Nix Workflow
-
-If you use the provided Nix shell and helper aliases, see
-[`DEV_SETUP.md`](DEV_SETUP.md).
-
 ## Docker Deployment
 
 ### 1. Create the runtime config
@@ -330,7 +325,6 @@ Formula_SAE_Dashboard/
 │   ├── public/
 │   └── package.json
 ├── docker-compose.yml
-├── DEV_SETUP.md
 └── README.md
 ```
 
